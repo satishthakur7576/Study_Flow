@@ -1,0 +1,6 @@
+{
+  "name": "StudyFlow",
+  "description": "An all-on-one student productivity dashboard with Tasks, Pomodoro Timer, Habit Tracker, Class Schedule, and Weekly Analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
