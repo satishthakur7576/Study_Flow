@@ -343,7 +343,7 @@ fun TimerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val focusPresets = listOf(15, 25, 45, 60)
+                        val focusPresets = listOf(15, 25, 45)
                         focusPresets.forEach { preset ->
                             val isSelected = focusDurationMinutes == preset
                             SuggestionChip(
@@ -441,7 +441,7 @@ fun TimerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val breakPresets = listOf(3, 5, 10, 15)
+                        val breakPresets = listOf(5, 10, 15)
                         breakPresets.forEach { preset ->
                             val isSelected = breakDurationMinutes == preset
                             SuggestionChip(

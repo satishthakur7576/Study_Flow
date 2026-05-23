@@ -188,6 +188,7 @@ fun TaskScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TaskListItem(
     task: TaskEntity,
@@ -249,56 +250,53 @@ fun TaskListItem(
                     .fillMaxWidth()
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                // Checkbox
+                Checkbox(
+                    checked = task.completed,
+                    onCheckedChange = { onToggleComplete(it) },
+                    modifier = Modifier.testTag("task_checkbox_${task.id}")
+                )
+
+                Column(
                     modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Checkbox
-                    Checkbox(
-                        checked = task.completed,
-                        onCheckedChange = { onToggleComplete(it) },
-                        modifier = Modifier.testTag("task_checkbox_${task.id}")
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (task.completed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f.coerceAtMost(0.5f)) else MaterialTheme.colorScheme.onSurface,
+                        textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
                     )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = task.title,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = if (task.completed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4e3f.coerceAtMost(0.5f)) else MaterialTheme.colorScheme.onSurface,
-                            textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
-                        )
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
+                    FlowRow(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Subject Tag
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            // Subject Tag
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = task.subject,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            // Due Date Display
                             Text(
-                                text = "📅 $displayDate",
+                                text = task.subject,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (task.dueDate == todayStr && !task.completed) HighPriorityColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
                             )
                         }
+
+                        // Due Date Display
+                        Text(
+                            text = "📅 $displayDate",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (task.dueDate == todayStr && !task.completed) HighPriorityColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
                     }
                 }
 
