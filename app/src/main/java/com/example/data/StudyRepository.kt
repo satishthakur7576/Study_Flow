@@ -40,9 +40,17 @@ class StudyRepository(private val studyDao: StudyDao) {
 
     suspend fun toggleHabitCompletion(habitId: Int, dateString: String, isCompleted: Boolean) {
         if (isCompleted) {
-            studyDao.insertHabitCompletion(HabitCompletionEntity(habitId, dateString))
+            studyDao.insertHabitCompletion(HabitCompletionEntity(habitId, dateString, "COMPLETED"))
         } else {
             studyDao.deleteHabitCompletion(habitId, dateString)
+        }
+    }
+
+    suspend fun setHabitStatus(habitId: Int, dateString: String, status: String?) {
+        if (status == null) {
+            studyDao.deleteHabitCompletion(habitId, dateString)
+        } else {
+            studyDao.insertHabitCompletion(HabitCompletionEntity(habitId, dateString, status))
         }
     }
 

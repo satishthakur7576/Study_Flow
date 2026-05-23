@@ -140,8 +140,8 @@ fun HabitScreen(
                             dayLabels = dayLabels,
                             todayString = todayString,
                             completions = completions,
-                            onToggleDate = { dateStr, checked ->
-                                viewModel.toggleHabitCompletion(habit.id, dateStr, checked)
+                            onToggleDate = { dateStr, status ->
+                                viewModel.setHabitStatus(habit.id, dateStr, status)
                             },
                             onDelete = { viewModel.deleteHabit(habit) }
                         )
@@ -396,12 +396,12 @@ fun HabitCard(
     dayLabels: List<String>,
     todayString: String,
     completions: List<HabitCompletionEntity>,
-    onToggleDate: (String, Boolean) -> Unit,
+    onToggleDate: (String, String?) -> Unit,
     onDelete: () -> Unit
 ) {
     // Calculate completions this week
     val habitCompletionsThisWeek = completions.filter {
-        it.habitId == habit.id && weekDates.contains(it.dateString)
+        it.habitId == habit.id && weekDates.contains(it.dateString) && it.status == "COMPLETED"
     }
     val completionsCount = habitCompletionsThisWeek.size
     val weeklyProgress = if (weekDates.isNotEmpty()) completionsCount.toFloat() / weekDates.size.toFloat() else 0f
@@ -553,24 +553,29 @@ fun HabitCard(
                     val dateKey = weekDates[i]
                     val label = dayLabels[i]
 
-                    val isChecked = completions.any { it.habitId == habit.id && it.dateString == dateKey }
+                    val completion = completions.find { it.habitId == habit.id && it.dateString == dateKey }
+                    val isChecked = completion != null && (completion.status == "COMPLETED" || completion.status == null)
+                    val isFailed = completion != null && completion.status == "FAILED"
                     val isToday = dateKey == todayString
 
-                    // Background and border selectors based on checks and today's values
+                    // Background and border selectors based on checks, fails, and today's values
                     val circleBg = when {
                         isChecked -> customColor
+                        isFailed -> Color(0xFFEF4444).copy(alpha = 0.15f)
                         isToday -> customColor.copy(alpha = 0.12f)
                         else -> Color.Transparent
                     }
 
                     val circleBorder = when {
                         isChecked -> null
+                        isFailed -> BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
                         isToday -> BorderStroke(2.dp, customColor)
                         else -> BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f))
                     }
 
                     val txtColor = when {
                         isChecked -> Color.White
+                        isFailed -> Color(0xFFEF4444)
                         isToday -> customColor
                         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     }
@@ -585,7 +590,15 @@ fun HabitCard(
                                 .clip(CircleShape)
                                 .background(circleBg)
                                 .then(if (circleBorder != null) Modifier.border(circleBorder, CircleShape) else Modifier)
-                                .clickable { onToggleDate(dateKey, !isChecked) }
+                                .clickable {
+                                    val currentStatus = if (completion == null) null else (completion.status ?: "COMPLETED")
+                                    val nextStatus = when (currentStatus) {
+                                        "COMPLETED" -> "FAILED"
+                                        "FAILED" -> null
+                                        else -> "COMPLETED"
+                                    }
+                                    onToggleDate(dateKey, nextStatus)
+                                }
                                 .testTag("habit_day_circle_${habit.id}_$i"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -594,6 +607,13 @@ fun HabitCard(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
                                     tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            } else if (isFailed) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
                                     modifier = Modifier.size(16.dp)
                                 )
                             } else {

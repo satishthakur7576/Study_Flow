@@ -66,19 +66,12 @@ fun HomeScreen(
     val weeklyStats by viewModel.weeklyAnalytics.collectAsStateWithLifecycle()
     val activeTheme by viewModel.themeAccent.collectAsStateWithLifecycle()
 
-    // Pomodoro states
-    val timerSecondsLeft by viewModel.timerSecondsLeft.collectAsStateWithLifecycle()
-    val timerIsRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
-    val sessionCount by viewModel.sessionCount.collectAsStateWithLifecycle()
-    val totalSessions by viewModel.totalSessions.collectAsStateWithLifecycle()
-
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("study_flow_prefs", android.content.Context.MODE_PRIVATE) }
 
     // Control toggles for dynamic widgets
     val showStreakWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_streak", true)) }
     val showClassBanner = remember { mutableStateOf(sharedPrefs.getBoolean("show_class_banner", true)) }
-    val showTimerWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_timer_widget", true)) }
     val showHabitsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_habits_widget", true)) }
 
     var showProfileHubDialog by remember { mutableStateOf(false) }
@@ -188,17 +181,20 @@ fun HomeScreen(
             }
         }
 
-        // --- SECTION 1: THE MAJESTIC 'TODAY'S PROGRESS' HERO CARD (Exactly like the shared image) ---
-        item {
-            val totalHabitsCount = habits.size
-            val completedHabitsCount = habits.count { habit ->
-                completions.any { it.habitId == habit.id && it.dateString == todayStr }
-            }
-            // Use real database values, fallback to 3/4 if empty so it matches the image beautifully
-            val displaysCompleted = if (totalHabitsCount > 0) completedHabitsCount else 3
-            val displaysTotal = if (totalHabitsCount > 0) totalHabitsCount else 4
-            val doublePercentageFraction = displaysCompleted.toFloat() / displaysTotal.toFloat()
-            val percentageInt = (doublePercentageFraction * 100).toInt()
+         // --- SECTION 1: THE MAJESTIC 'TODAY'S PROGRESS' HERO CARD (Exactly like the shared image) ---
+         item {
+             val totalHabitsCount = habits.size
+             val completedHabitsCount = habits.count { habit ->
+                 completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
+             }
+             val failedHabitsCount = habits.count { habit ->
+                 completions.any { it.habitId == habit.id && it.dateString == todayStr && it.status == "FAILED" }
+             }
+             // Use real database values, fallback to 3/4 if empty so it matches the image beautifully
+             val displaysCompleted = if (totalHabitsCount > 0) completedHabitsCount else 3
+             val displaysTotal = if (totalHabitsCount > 0) totalHabitsCount else 4
+             val doublePercentageFraction = displaysCompleted.toFloat() / displaysTotal.toFloat()
+             val percentageInt = (doublePercentageFraction * 100).toInt()
 
             Card(
                 modifier = Modifier
@@ -252,7 +248,11 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "$displaysCompleted/$displaysTotal completed",
+                            text = if (totalHabitsCount > 0) {
+                                "$completedHabitsCount completed • $failedHabitsCount failed"
+                            } else {
+                                "$displaysCompleted/$displaysTotal completed"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -282,551 +282,191 @@ fun HomeScreen(
             }
         }
 
-        // --- SECTION 2: NEXT CLASS PREMIUM DEEP BANNER ---
+        // --- SECTION 3: DAILY HABITS CUSTOM WIDGETS ---
         item {
-            if (showClassBanner.value) {
+            val habitsVisible = showHabitsWidget.value
+
+            if (habitsVisible) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(FintrixOrangeGradient)
-                        .testTag("next_class_banner")
                 ) {
-                    // Ambient corner bubble design
-                    Box(
-                        modifier = Modifier
-                            .offset(x = 280.dp, y = 40.dp)
-                            .size(110.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
-                    )
-
-                    Column(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(FintrixCardGradient),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(24.dp)
                     ) {
-                        // Badge
-                        Box(
+                        Column(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color.White.copy(alpha = 0.18f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .fillMaxWidth()
+                                .padding(20.dp)
                         ) {
-                            Text(
-                                text = "NEXT CLASS",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = nextClass?.subjectName ?: "Advanced CAD",
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-
-                        Text(
-                            text = if (nextClass != null) "${nextClass.timeSlot} • Room ${nextClass.roomNumber}" else "10:30 AM • Room 402B",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(alpha = 0.85f)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Progress Bar
-                        val taskProgress = if (tasksStats.dueCount == 0) 0.75f else tasksStats.completedCount.toFloat() / tasksStats.dueCount.toFloat()
-                        val taskPercentStr = "${(taskProgress * 100).toInt()}% Done"
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            LinearProgressIndicator(
-                                progress = { taskProgress },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = Color.White,
-                                trackColor = Color.White.copy(alpha = 0.32f)
-                            )
-                            Text(
-                                text = taskPercentStr,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- SECTION 3: FOCUS TIMER & DAILY HABITS CUSTOM WIDGETS ---
-        item {
-            val timerVisible = showTimerWidget.value
-            val habitsVisible = showHabitsWidget.value
-
-            if (timerVisible || habitsVisible) {
-                if (timerVisible && habitsVisible) {
-                    // Show side-by-side
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Focus Timer Left Widget Card
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(154.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(FintrixCardGradient),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Text(
+                                    text = "Today's Habits 🎯",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                
+                                // A subtle informative indicator
+                                Text(
+                                    text = "Daily checklist",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            val topHabits = habits.take(5) // Dynamic database rows
+                            if (topHabits.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "FOCUS TIMER",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                    if (timerIsRunning) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(HighPriorityColor)
-                                        )
-                                    }
-                                }
-
-                                // Time Display
-                                val min = timerSecondsLeft / 60
-                                val sec = timerSecondsLeft % 60
-                                val timeStr = "%02d:%02d".format(min, sec)
-
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = timeStr,
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.testTag("home_timer_display")
-                                    )
-                                    Text(
-                                        text = "Session $sessionCount of $totalSessions",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        text = "No habits tracked yet.",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-
-                                // Play/Pause Action Button
-                                Button(
-                                    onClick = {
-                                        if (timerIsRunning) viewModel.pauseTimer() else viewModel.startTimer()
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(FintrixTealGradient),
-                                    contentPadding = PaddingValues(0.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                            } else {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text(
-                                        text = if (timerIsRunning) "Pause" else "Start",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
-                            }
-                        }
+                                    topHabits.forEachIndexed { index, habit ->
+                                        val completion = completions.find { it.habitId == habit.id && it.dateString == todayStr }
+                                        val isCompleted = completion != null && (completion.status == "COMPLETED" || completion.status == null)
+                                        val isFailed = completion != null && completion.status == "FAILED"
+                                        
+                                        // Category Pastel colors
+                                        val pastelBgColor = when (index % 4) {
+                                            0 -> Color(0xFFFEF3C7) // Light Amber
+                                            1 -> Color(0xFFE0E7FF) // Light Indigo
+                                            2 -> Color(0xFFFEE2E2) // Light Pink
+                                            else -> Color(0xFFCCFBF1) // Light Teal
+                                        }
 
-                        // Daily Habits Right Checklist Card
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(154.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(FintrixCardGradient),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = "TODAY'S HABITS",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                val topHabits = habits.take(3)
-                                if (topHabits.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "No active habits.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                } else {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        topHabits.forEachIndexed { index, habit ->
-                                            val isCompleted = completions.any { it.habitId == habit.id && it.dateString == todayStr }
-                                            
-                                            // Soft cozy category light background colors
-                                            val pastelColor = when (index % 4) {
-                                                0 -> Color(0xFFFEF3C7) // Light Amber
-                                                1 -> Color(0xFFE0E7FF) // Light Indigo
-                                                2 -> Color(0xFFFEE2E2) // Light Pink
-                                                else -> Color(0xFFCCFBF1) // Light Teal
-                                            }
-
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(
+                                                    BorderStroke(
+                                                        0.5.dp,
+                                                        if (isCompleted) Color(0xFF10B981).copy(alpha = 0.4f)
+                                                        else if (isFailed) Color(0xFFEF4444).copy(alpha = 0.4f)
+                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                                    ),
+                                                    RoundedCornerShape(14.dp)
+                                                )
+                                                .background(
+                                                    if (isCompleted) Color(0xFF10B981).copy(alpha = 0.08f)
+                                                    else if (isFailed) Color(0xFFEF4444).copy(alpha = 0.08f)
+                                                    else Color.Transparent,
+                                                    RoundedCornerShape(14.dp)
+                                                )
+                                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                        ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        viewModel.toggleHabitCompletion(habit.id, todayStr, !isCompleted)
-                                                    }
-                                                    .padding(vertical = 2.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                                modifier = Modifier.weight(1f)
                                             ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    modifier = Modifier.weight(1f)
+                                                // Circular emoji avatar
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(42.dp)
+                                                        .clip(CircleShape)
+                                                        .background(pastelBgColor),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    // Soft icon circle
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .clip(CircleShape)
-                                                            .background(pastelColor),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text(
-                                                            text = habit.icon,
-                                                            style = MaterialTheme.typography.bodySmall
-                                                        )
-                                                    }
                                                     Text(
-                                                        text = habit.name,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (isCompleted) MaterialTheme.colorScheme.onSurfaceVariant
-                                                                else MaterialTheme.colorScheme.onSurface,
-                                                        maxLines = 1
+                                                        text = habit.icon,
+                                                        style = MaterialTheme.typography.titleMedium
                                                     )
                                                 }
 
-                                                // Clean checklist green vs. silver outline circles
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(18.dp)
-                                                        .clip(CircleShape)
-                                                        .then(
-                                                            if (isCompleted) Modifier
-                                                                .background(Color(0xFF10B981))
-                                                            else Modifier
-                                                                .border(1.5.dp, Color(0xFFCBD5E1), CircleShape)
-                                                        ),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    if (isCompleted) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Check,
-                                                            contentDescription = null,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(10.dp)
-                                                        )
-                                                    }
+                                                Column {
+                                                    Text(
+                                                        text = habit.name,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isCompleted || isFailed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                                else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = "🔥 ${habit.streak} day streak",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = Color(0xFFFD5C25) // Coral orange
+                                                    )
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Show single card taking up the full width
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        if (timerVisible) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(154.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(FintrixCardGradient),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(14.dp),
-                                    verticalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "FOCUS TIMER (Full Dashboard)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.secondary,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        if (timerIsRunning) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .clip(CircleShape)
-                                                    .background(HighPriorityColor)
-                                            )
-                                        }
-                                    }
 
-                                    // Time Display
-                                    val min = timerSecondsLeft / 60
-                                    val sec = timerSecondsLeft % 60
-                                    val timeStr = "%02d:%02d".format(min, sec)
-
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = timeStr,
-                                            style = MaterialTheme.typography.displaySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Session $sessionCount of $totalSessions",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            if (timerIsRunning) viewModel.pauseTimer() else viewModel.startTimer()
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(FintrixTealGradient),
-                                        contentPadding = PaddingValues(0.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
-                                    ) {
-                                        Text(
-                                            text = if (timerIsRunning) "Pause focus" else "Start focus",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .background(FintrixCardGradient),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                                shape = RoundedCornerShape(24.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(20.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "Today's Habits 🎯",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        
-                                        // A subtle informative indicator
-                                        Text(
-                                            text = "Daily checklist",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(14.dp))
-
-                                    val topHabits = habits.take(5) // Dynamic database rows
-                                    if (topHabits.isEmpty()) {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "No habits tracked yet.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    } else {
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            topHabits.forEachIndexed { index, habit ->
-                                                val isCompleted = completions.any { it.habitId == habit.id && it.dateString == todayStr }
-                                                
-                                                // Category Pastel colors
-                                                val pastelBgColor = when (index % 4) {
-                                                    0 -> Color(0xFFFEF3C7) // Light Amber
-                                                    1 -> Color(0xFFE0E7FF) // Light Indigo
-                                                    2 -> Color(0xFFFEE2E2) // Light Pink
-                                                    else -> Color(0xFFCCFBF1) // Light Teal
-                                                }
-                                                val pastelTextColor = when (index % 4) {
-                                                    0 -> Color(0xFFD97706)
-                                                    1 -> Color(0xFF4F46E5)
-                                                    2 -> Color(0xFFDC2626)
-                                                    else -> Color(0xFF0D9488)
-                                                }
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                            // Clean check and cross choices
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Check Circle Button
+                                                Box(
                                                     modifier = Modifier
-                                                        .fillMaxWidth()
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isCompleted) Color(0xFF10B981) else Color.Transparent)
                                                         .border(
-                                                            BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                                                            RoundedCornerShape(14.dp)
-                                                        )
-                                                        .background(
-                                                            if (isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                                                            else Color.Transparent,
-                                                            RoundedCornerShape(14.dp)
+                                                            1.5.dp,
+                                                            if (isCompleted) Color(0xFF10B981) else Color(0xFFCBD5E1),
+                                                            CircleShape
                                                         )
                                                         .clickable {
-                                                            viewModel.toggleHabitCompletion(habit.id, todayStr, !isCompleted)
-                                                        }
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                                            viewModel.setHabitStatus(habit.id, todayStr, if (isCompleted) null else "COMPLETED")
+                                                        },
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                                        modifier = Modifier.weight(1f)
-                                                    ) {
-                                                        // Circular emoji avatar
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(42.dp)
-                                                                .clip(CircleShape)
-                                                                .background(pastelBgColor),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Text(
-                                                                text = habit.icon,
-                                                                style = MaterialTheme.typography.titleMedium
-                                                            )
-                                                        }
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Mark Complete",
+                                                        tint = if (isCompleted) Color.White else Color(0xFF94A3B8),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
 
-                                                        Column {
-                                                            Text(
-                                                                text = habit.name,
-                                                                style = MaterialTheme.typography.bodyMedium,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = if (isCompleted) MaterialTheme.colorScheme.onSurfaceVariant
-                                                                        else MaterialTheme.colorScheme.onSurface
-                                                            )
-                                                            Spacer(modifier = Modifier.height(2.dp))
-                                                            Text(
-                                                                text = "🔥 ${habit.streak} day streak",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                fontWeight = FontWeight.Medium,
-                                                                color = Color(0xFFFD5C25) // Coral orange
-                                                            )
-                                                        }
-                                                    }
-
-                                                    // Circular tick box matching the user's shared image
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(24.dp)
-                                                            .clip(CircleShape)
-                                                            .then(
-                                                                if (isCompleted) Modifier
-                                                                    .background(Color(0xFF10B981))
-                                                                else Modifier
-                                                                    .border(1.5.dp, Color(0xFFCBD5E1), CircleShape)
-                                                            ),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        if (isCompleted) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Check,
-                                                                contentDescription = null,
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
-                                                        }
-                                                    }
+                                                // Cross Circle Button
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isFailed) Color(0xFFEF4444) else Color.Transparent)
+                                                        .border(
+                                                            1.5.dp,
+                                                            if (isFailed) Color(0xFFEF4444) else Color(0xFFCBD5E1),
+                                                            CircleShape
+                                                        )
+                                                        .clickable {
+                                                            viewModel.setHabitStatus(habit.id, todayStr, if (isFailed) null else "FAILED")
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Clear,
+                                                        contentDescription = "Mark Failed",
+                                                        tint = if (isFailed) Color.White else Color(0xFF94A3B8),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
                                                 }
                                             }
                                         }
@@ -1330,31 +970,6 @@ fun HomeScreen(
                                             onCheckedChange = { newVal ->
                                                 showClassBanner.value = newVal
                                                 sharedPrefs.edit().putBoolean("show_class_banner", newVal).apply()
-                                            }
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(2.dp))
-
-                                    // Pomodoro Focus Timer toggle
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            val newVal = !showTimerWidget.value
-                                            showTimerWidget.value = newVal
-                                            sharedPrefs.edit().putBoolean("show_timer_widget", newVal).apply()
-                                        }.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Show focal Pomodoro Timer module", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text("Add an interactive, fast productivity timer directly to home.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        Checkbox(
-                                            checked = showTimerWidget.value,
-                                            onCheckedChange = { newVal ->
-                                                showTimerWidget.value = newVal
-                                                sharedPrefs.edit().putBoolean("show_timer_widget", newVal).apply()
                                             }
                                         )
                                     }

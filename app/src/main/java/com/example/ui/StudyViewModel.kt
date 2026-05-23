@@ -66,7 +66,13 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // --- Pomodoro Timer State ---
-    private val _timerSecondsLeft = MutableStateFlow(25 * 60)
+    private val _focusDurationMinutes = MutableStateFlow(sharedPrefs.getInt("focus_duration_minutes", 25))
+    val focusDurationMinutes: StateFlow<Int> = _focusDurationMinutes.asStateFlow()
+
+    private val _breakDurationMinutes = MutableStateFlow(sharedPrefs.getInt("break_duration_minutes", 5))
+    val breakDurationMinutes: StateFlow<Int> = _breakDurationMinutes.asStateFlow()
+
+    private val _timerSecondsLeft = MutableStateFlow(sharedPrefs.getInt("focus_duration_minutes", 25) * 60)
     val timerSecondsLeft: StateFlow<Int> = _timerSecondsLeft.asStateFlow()
 
     private val _timerIsRunning = MutableStateFlow(false)
@@ -82,6 +88,24 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
     val totalSessions: StateFlow<Int> = _totalSessions.asStateFlow()
 
     private var timerJob: Job? = null
+
+    fun setFocusDuration(minutes: Int) {
+        val clampMins = minutes.coerceIn(1, 180)
+        sharedPrefs.edit().putInt("focus_duration_minutes", clampMins).apply()
+        _focusDurationMinutes.value = clampMins
+        if (!_isBreakMode.value && !_timerIsRunning.value) {
+            _timerSecondsLeft.value = clampMins * 60
+        }
+    }
+
+    fun setBreakDuration(minutes: Int) {
+        val clampMins = minutes.coerceIn(1, 60)
+        sharedPrefs.edit().putInt("break_duration_minutes", clampMins).apply()
+        _breakDurationMinutes.value = clampMins
+        if (_isBreakMode.value && !_timerIsRunning.value) {
+            _timerSecondsLeft.value = clampMins * 60
+        }
+    }
 
     // --- Task CRUD Handles ---
     fun addTask(title: String, subject: String, dueDate: String, priority: String) {
@@ -148,6 +172,13 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
     fun toggleHabitCompletion(habitId: Int, dateString: String, isCompleted: Boolean) {
         viewModelScope.launch {
             repository.toggleHabitCompletion(habitId, dateString, isCompleted)
+            recalculateHabitStreaks()
+        }
+    }
+
+    fun setHabitStatus(habitId: Int, dateString: String, status: String?) {
+        viewModelScope.launch {
+            repository.setHabitStatus(habitId, dateString, status)
             recalculateHabitStreaks()
         }
     }
@@ -227,7 +258,7 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
     fun resetTimer() {
         _timerIsRunning.value = false
         timerJob?.cancel()
-        _timerSecondsLeft.value = if (_isBreakMode.value) 5 * 60 else 25 * 60
+        _timerSecondsLeft.value = if (_isBreakMode.value) _breakDurationMinutes.value * 60 else _focusDurationMinutes.value * 60
     }
 
     fun skipSession() {
@@ -253,15 +284,15 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
             }
 
             if (!_isBreakMode.value) {
-                // Work session ended: Log 25 minutes focused
-                repository.logFocusMinutes(getTodayDateString(), 25)
+                // Work session ended: Log focus minutes dynamically
+                repository.logFocusMinutes(getTodayDateString(), _focusDurationMinutes.value)
 
                 _isBreakMode.value = true
-                _timerSecondsLeft.value = 5 * 60 // 5 minute break
+                _timerSecondsLeft.value = _breakDurationMinutes.value * 60
             } else {
                 // Break ended: Increment session
                 _isBreakMode.value = false
-                _timerSecondsLeft.value = 25 * 60 // 25 minute work
+                _timerSecondsLeft.value = _focusDurationMinutes.value * 60
 
                 val currentSession = _sessionCount.value
                 val maxSessions = _totalSessions.value
@@ -316,7 +347,7 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
     }
 
     private fun calculateSingleHabitStreak(habitId: Int, completions: List<HabitCompletionEntity>): Int {
-        val habitCompletions = completions.filter { it.habitId == habitId }.map { it.dateString }.toSet()
+        val habitCompletions = completions.filter { it.habitId == habitId && (it.status == "COMPLETED" || it.status == null) }.map { it.dateString }.toSet()
         if (habitCompletions.isEmpty()) return 0
 
         var streak = 0
@@ -351,7 +382,7 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
         completions: List<HabitCompletionEntity>,
         focusRecords: List<FocusRecordEntity>
     ): Int {
-        val completedDatesSet = completions.map { it.dateString }.toSet()
+        val completedDatesSet = completions.filter { it.status == "COMPLETED" || it.status == null }.map { it.dateString }.toSet()
         val focusedDatesSet = focusRecords.filter { it.durationMinutes > 0 }.map { it.dateString }.toSet()
 
         val activeDates = completedDatesSet.union(focusedDatesSet)
@@ -425,7 +456,7 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
             dailyTaskCompletionRates.add(taskRate)
 
             // Habit consistency (percentage of active habits checked on this day)
-            val activeCompletions = completionsList.filter { it.dateString == dateStr }
+            val activeCompletions = completionsList.filter { it.dateString == dateStr && (it.status == "COMPLETED" || it.status == null) }
             val habitRate = if (habitsList.isEmpty()) {
                 0f
             } else {

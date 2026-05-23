@@ -13,7 +13,7 @@ import androidx.room.RoomDatabase
         FocusRecordEntity::class,
         ClassScheduleEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class StudyDatabase : RoomDatabase() {

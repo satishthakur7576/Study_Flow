@@ -28,7 +28,8 @@ data class HabitEntity(
 @Entity(tableName = "habit_completions", primaryKeys = ["habitId", "dateString"])
 data class HabitCompletionEntity(
     val habitId: Int,
-    val dateString: String // "YYYY-MM-DD"
+    val dateString: String, // "YYYY-MM-DD"
+    val status: String? = "COMPLETED" // "COMPLETED" or "FAILED"
 )
 
 @Entity(tableName = "focus_records")

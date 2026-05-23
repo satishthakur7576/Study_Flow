@@ -327,7 +327,7 @@ fun TaskAddEditDialog(
     onSave: (title: String, subject: String, dueDate: String, priority: String) -> Unit
 ) {
     var titleInput by remember { mutableStateOf(initialTask?.title ?: "") }
-    var subjectInput by remember { mutableStateOf(initialTask?.subject ?: "Maths") }
+    var subjectInput by remember { mutableStateOf(initialTask?.subject ?: "") }
     var dateInput by remember {
         mutableStateOf(
             initialTask?.dueDate ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -335,8 +335,8 @@ fun TaskAddEditDialog(
     }
     var priorityInput by remember { mutableStateOf(initialTask?.priority ?: "MEDIUM") }
     var titleError by remember { mutableStateOf(false) }
+    var subjectError by remember { mutableStateOf(false) }
 
-    val subjects = listOf("Maths", "Physics", "Chemistry", "CAD", "Coding", "English", "History")
     val priorities = listOf("LOW", "MEDIUM", "URGENT")
 
     AlertDialog(
@@ -372,23 +372,25 @@ fun TaskAddEditDialog(
                     }
                 }
 
-                // Subject Tags Selection Rows
+                // Subject Name Field (User enters manually)
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Subject / Class Tag", style = MaterialTheme.typography.labelMedium)
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            subjects.forEach { subject ->
-                                val active = subjectInput == subject
-                                FilterChip(
-                                    selected = active,
-                                    onClick = { subjectInput = subject },
-                                    label = { Text(subject) }
-                                )
-                            }
+                        OutlinedTextField(
+                            value = subjectInput,
+                            onValueChange = {
+                                subjectInput = it
+                                subjectError = false
+                            },
+                            placeholder = { Text("e.g. Maths, Physics, CAD") },
+                            isError = subjectError,
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("task_subject_input")
+                        )
+                        if (subjectError) {
+                            Text("Subject cannot be blank.", color = HighPriorityColor, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -491,10 +493,18 @@ fun TaskAddEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (titleInput.isBlank()) {
+                    val isTitleBlank = titleInput.isBlank()
+                    val isSubjectBlank = subjectInput.isBlank()
+                    
+                    if (isTitleBlank) {
                         titleError = true
-                    } else {
-                        onSave(titleInput.trim(), subjectInput, dateInput.trim(), priorityInput)
+                    }
+                    if (isSubjectBlank) {
+                        subjectError = true
+                    }
+                    
+                    if (!isTitleBlank && !isSubjectBlank) {
+                        onSave(titleInput.trim(), subjectInput.trim(), dateInput.trim(), priorityInput)
                     }
                 },
                 modifier = Modifier.testTag("dialog_save_task")
