@@ -12,8 +12,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +41,9 @@ fun TimerScreen(
     val totalSessions by viewModel.totalSessions.collectAsStateWithLifecycle()
     val focusDurationMinutes by viewModel.focusDurationMinutes.collectAsStateWithLifecycle()
     val breakDurationMinutes by viewModel.breakDurationMinutes.collectAsStateWithLifecycle()
+
+    var showCustomFocusDialog by remember { mutableStateOf(false) }
+    var showCustomBreakDialog by remember { mutableStateOf(false) }
 
     val minutes = secondsLeft / 60
     val seconds = secondsLeft % 60
@@ -296,14 +300,29 @@ fun TimerScreen(
                                 )
                             }
 
-                            Text(
-                                text = "$focusDurationMinutes m",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.width(48.dp),
-                                textAlign = TextAlign.Center
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !isRunning) { showCustomFocusDialog = true }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "$focusDurationMinutes m",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.testTag("custom_focus_clickable_text"),
+                                    textAlign = TextAlign.Center
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Set Custom Focus Time",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
 
                             FilledTonalIconButton(
                                 onClick = { viewModel.setFocusDuration(focusDurationMinutes + 5) },
@@ -379,14 +398,29 @@ fun TimerScreen(
                                 )
                             }
 
-                            Text(
-                                text = "$breakDurationMinutes m",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.width(48.dp),
-                                textAlign = TextAlign.Center
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !isRunning) { showCustomBreakDialog = true }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "$breakDurationMinutes m",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.testTag("custom_break_clickable_text"),
+                                    textAlign = TextAlign.Center
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Set Custom Break Time",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
 
                             FilledTonalIconButton(
                                 onClick = { viewModel.setBreakDuration(breakDurationMinutes + 1) },
@@ -474,5 +508,101 @@ fun TimerScreen(
                 }
             }
         }
+    }
+
+    if (showCustomFocusDialog) {
+        var tempMins by remember { mutableStateOf(focusDurationMinutes.toString()) }
+        var errorMsg by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCustomFocusDialog = false },
+            title = { Text("Set Custom Focus Duration ⏱️", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter custom duration in minutes (1 - 180):", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = tempMins,
+                        onValueChange = {
+                            tempMins = it
+                            errorMsg = ""
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("custom_focus_input")
+                    )
+                    if (errorMsg.isNotBlank()) {
+                        Text(text = errorMsg, color = HighPriorityColor, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = tempMins.toIntOrNull()
+                        if (parsed == null || parsed !in 1..180) {
+                            errorMsg = "Please enter a valid number between 1 and 180."
+                        } else {
+                            viewModel.setFocusDuration(parsed)
+                            showCustomFocusDialog = false
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm_custom_focus")
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomFocusDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showCustomBreakDialog) {
+        var tempMins by remember { mutableStateOf(breakDurationMinutes.toString()) }
+        var errorMsg by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCustomBreakDialog = false },
+            title = { Text("Set Custom Break Duration ☕", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter custom duration in minutes (1 - 60):", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = tempMins,
+                        onValueChange = {
+                            tempMins = it
+                            errorMsg = ""
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("custom_break_input")
+                    )
+                    if (errorMsg.isNotBlank()) {
+                        Text(text = errorMsg, color = HighPriorityColor, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = tempMins.toIntOrNull()
+                        if (parsed == null || parsed !in 1..60) {
+                            errorMsg = "Please enter a valid number between 1 and 60."
+                        } else {
+                            viewModel.setBreakDuration(parsed)
+                            showCustomBreakDialog = false
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm_custom_break")
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomBreakDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

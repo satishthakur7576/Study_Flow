@@ -279,7 +279,9 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
                 // Play soft beep alert
                 val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90)
                 toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
-            } catch (e: Exception) {
+                delay(600)
+                toneGen.release()
+            } catch (t: Throwable) {
                 // Ignore audio-related runtime bugs
             }
 
