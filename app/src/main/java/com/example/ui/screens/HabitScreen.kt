@@ -44,8 +44,8 @@ fun HabitScreen(
     var showAddDialog by remember { mutableStateOf(false) }
 
     // Get the formatted date keys for Mon-Sun of the current week (YYYY-MM-DD keys)
-    val weekDates = remember { viewModel.getDatesOfCurrentWeekString() }
-    val todayString = remember { viewModel.getTodayDateString() }
+    val weekDates by viewModel.datesOfCurrentWeekString.collectAsStateWithLifecycle()
+    val todayString by viewModel.todayDateString.collectAsStateWithLifecycle()
     val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
 
     Scaffold(
@@ -419,7 +419,7 @@ fun HabitCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(FintrixCardGradient)
+            .background(cardGradient())
             .testTag("habit_card_${habit.id}"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),

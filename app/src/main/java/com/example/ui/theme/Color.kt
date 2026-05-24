@@ -1,5 +1,7 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 
@@ -62,6 +64,26 @@ val FintrixCardHoverGradient = Brush.verticalGradient(
         Color(0xFFF1F5F9)
     )
 )
+
+@Composable
+fun cardGradient(): Brush {
+    return Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            MaterialTheme.colorScheme.surface
+        )
+    )
+}
+
+@Composable
+fun cardHoverGradient(): Brush {
+    return Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.surface
+        )
+    )
+}
 
 val DarkBackgroundGradient = Brush.verticalGradient(
     colors = listOf(

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,13 +38,12 @@ fun ScheduleScreen(
     val classes by viewModel.classes.collectAsStateWithLifecycle()
 
     // Determine current day of week (1 = Mon ... 7 = Sun)
-    val todayDayOfWeek = remember {
-        val cal = Calendar.getInstance()
-        val day = cal.get(Calendar.DAY_OF_WEEK)
-        if (day == Calendar.SUNDAY) 7 else day - 1
-    }
+    val todayDayOfWeek by viewModel.todayDayOfWeek.collectAsStateWithLifecycle()
 
-    var selectedDayTab by remember { mutableStateOf(todayDayOfWeek) }
+    var selectedDayTab by remember { mutableStateOf(1) }
+    LaunchedEffect(todayDayOfWeek) {
+        selectedDayTab = todayDayOfWeek
+    }
     var showAddDialog by remember { mutableStateOf(false) }
 
     val daysNameList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -353,7 +353,7 @@ fun ClassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(FintrixCardGradient)
+            .background(cardGradient())
             .testTag("class_card_${classItem.id}"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -463,7 +463,7 @@ fun ClassCard(
                             .testTag("reset_attendance_${classItem.id}")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.RotateLeft,
+                            imageVector = Icons.AutoMirrored.Filled.RotateLeft,
                             contentDescription = "Reset Attendance",
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             modifier = Modifier.size(18.dp)

@@ -224,7 +224,7 @@ fun TaskListItem(
             .fillMaxWidth()
             .testTag("task_card_${task.id}")
             .clip(RoundedCornerShape(16.dp))
-            .background(FintrixCardGradient)
+            .background(cardGradient())
             .clickable { onEdit() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(

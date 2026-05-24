@@ -1,6 +1,9 @@
 package com.example.ui
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.media.ToneGenerator
 import androidx.lifecycle.ViewModel
@@ -14,7 +17,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-class StudyViewModel(private val repository: StudyRepository, context: Context) : ViewModel() {
+class StudyViewModel(private val repository: StudyRepository, private val context: Context) : ViewModel() {
 
     private val sharedPrefs = context.getSharedPreferences("study_flow_prefs", Context.MODE_PRIVATE)
 
@@ -36,6 +39,34 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
         _themeAccent.value = accent
     }
 
+    // --- Dynamic Dark / Light Theme Mode ---
+    private val _isDarkTheme = MutableStateFlow(sharedPrefs.getBoolean("is_dark_theme", false))
+    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
+    fun updateDarkTheme(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("is_dark_theme", enabled).apply()
+        _isDarkTheme.value = enabled
+    }
+
+    // --- Dynamic Date Tracking for Adaptive Resetting ---
+    private val _todayDateString = MutableStateFlow(getTodayDateString())
+    val todayDateString: StateFlow<String> = _todayDateString.asStateFlow()
+
+    private val _todayDisplayDate = MutableStateFlow(getTodayDisplayDate())
+    val todayDisplayDate: StateFlow<String> = _todayDisplayDate.asStateFlow()
+
+    private val _datesOfCurrentWeekString = MutableStateFlow(getDatesOfCurrentWeekString())
+    val datesOfCurrentWeekString: StateFlow<List<String>> = _datesOfCurrentWeekString.asStateFlow()
+
+    private val _todayDayOfWeek = MutableStateFlow(calculateTodayDayOfWeek())
+    val todayDayOfWeek: StateFlow<Int> = _todayDayOfWeek.asStateFlow()
+
+    private val dateChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            updateCurrentDates()
+        }
+    }
+
     // --- Database Flows ---
     val tasks: StateFlow<List<TaskEntity>> = repository.allTasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -44,6 +75,23 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        // Register for system time/date broadcast changes
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(dateChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(dateChangeReceiver, filter)
+            }
+        } catch (e: Exception) {
+            // Log or ignore to guarantee application doesn't crash on restrictive OS platforms
+        }
+
         viewModelScope.launch {
             // Wait briefly to make sure repository flow starts up, or read directly
             val currentHabits = repository.allHabits.first()
@@ -312,15 +360,13 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
     }
 
     // --- Calculated/Derived Metrics for Today ---
-    val todayTasksSummary: StateFlow<TodayTasksStats> = tasks.map { taskList ->
-        val todayStr = getTodayDateString()
+    val todayTasksSummary: StateFlow<TodayTasksStats> = combine(tasks, todayDateString) { taskList, todayStr ->
         val dueToday = taskList.filter { it.dueDate == todayStr }
         val completedToday = dueToday.count { it.completed }
         TodayTasksStats(dueCount = dueToday.size, completedCount = completedToday)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayTasksStats(0, 0))
 
-    val todayFocusMinutes: StateFlow<Int> = focusRecords.map { list ->
-        val todayStr = getTodayDateString()
+    val todayFocusMinutes: StateFlow<Int> = combine(focusRecords, todayDateString) { list, todayStr ->
         list.find { it.dateString == todayStr }?.durationMinutes ?: 0
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -330,7 +376,7 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
         if (totalSessions == 0) 0f else (totalAttended.toFloat() / totalSessions.toFloat()) * 100f
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
-    val currentStreak: StateFlow<Int> = combine(completions, focusRecords) { hCompletes, fRecords ->
+    val currentStreak: StateFlow<Int> = combine(completions, focusRecords, todayDateString) { hCompletes, fRecords, _ ->
         calculateStreakCount(hCompletes, fRecords)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -501,6 +547,31 @@ class StudyViewModel(private val repository: StudyRepository, context: Context) 
             cal.add(Calendar.DAY_OF_YEAR, 1)
         }
         return dates
+    }
+
+    private fun calculateTodayDayOfWeek(): Int {
+        val cal = Calendar.getInstance()
+        val day = cal.get(Calendar.DAY_OF_WEEK)
+        return if (day == Calendar.SUNDAY) 7 else day - 1
+    }
+
+    fun updateCurrentDates() {
+        val todayStr = getTodayDateString()
+        if (_todayDateString.value != todayStr) {
+            _todayDateString.value = todayStr
+            _todayDisplayDate.value = getTodayDisplayDate()
+            _datesOfCurrentWeekString.value = getDatesOfCurrentWeekString()
+            _todayDayOfWeek.value = calculateTodayDayOfWeek()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            context.unregisterReceiver(dateChangeReceiver)
+        } catch (e: Exception) {
+            // Ignore if already unregistered or not registered
+        }
     }
 }
 

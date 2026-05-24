@@ -43,7 +43,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val themeAccent by viewModel.themeAccent.collectAsState()
-            MyApplicationTheme(darkTheme = false, accentName = themeAccent) {
+            val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+            MyApplicationTheme(darkTheme = isDarkTheme, accentName = themeAccent) {
                 MainAppLayout(viewModel)
             }
         }

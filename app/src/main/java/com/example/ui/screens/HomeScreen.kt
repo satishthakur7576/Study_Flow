@@ -51,8 +51,8 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val studentName by viewModel.studentName.collectAsStateWithLifecycle()
-    val todayDate = viewModel.getTodayDisplayDate()
-    val todayStr = viewModel.getTodayDateString()
+    val todayDate by viewModel.todayDisplayDate.collectAsStateWithLifecycle()
+    val todayStr by viewModel.todayDateString.collectAsStateWithLifecycle()
     
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val habits by viewModel.habits.collectAsStateWithLifecycle()
@@ -201,7 +201,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(FintrixCardGradient),
+                    .background(cardGradient()),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
                 colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                 shape = RoundedCornerShape(24.dp)
@@ -296,7 +296,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(24.dp))
-                            .background(FintrixCardGradient),
+                            .background(cardGradient()),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                         shape = RoundedCornerShape(24.dp)
@@ -500,7 +500,7 @@ fun HomeScreen(
                     )
                 }
 
-                val highPriorityTasks = tasks.filter { it.priority == "High" && !it.completed }
+                val highPriorityTasks = tasks.filter { (it.priority == "URGENT" || it.priority == "HIGH") && !it.completed }
                 val displayTasks = if (highPriorityTasks.isNotEmpty()) highPriorityTasks.take(2) else tasks.filter { !it.completed }.take(2)
 
                 if (displayTasks.isEmpty()) {
@@ -525,7 +525,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(FintrixCardGradient),
+                                .background(cardGradient()),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                             shape = RoundedCornerShape(16.dp)
@@ -548,7 +548,7 @@ fun HomeScreen(
                                             .width(4.dp)
                                             .height(36.dp)
                                             .clip(RoundedCornerShape(2.dp))
-                                            .background(if (task.priority == "High") HighPriorityColor else LowPriorityColor)
+                                            .background(if (task.priority == "URGENT" || task.priority == "HIGH") HighPriorityColor else LowPriorityColor)
                                     )
                                     Column {
                                         Text(
@@ -565,7 +565,7 @@ fun HomeScreen(
                                     }
                                 }
 
-                                if (task.priority == "High") {
+                                if (task.priority == "URGENT" || task.priority == "HIGH") {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
@@ -594,7 +594,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(FintrixCardGradient),
+                    .background(cardGradient()),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 colors = CardDefaults.cardColors(containerColor = Color.Transparent)
@@ -848,6 +848,31 @@ fun HomeScreen(
                                             }
                                         }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("App Theme Appearance", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.updateDarkTheme(!viewModel.isDarkTheme.value)
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Matte Black Theme Mode", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        Text("Switch to premium luxury eye-safe dark mode layout.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    val isDarkState by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+                                    Switch(
+                                        checked = isDarkState,
+                                        onCheckedChange = { enabled ->
+                                            viewModel.updateDarkTheme(enabled)
+                                        }
+                                    )
                                 }
                             }
                         }
