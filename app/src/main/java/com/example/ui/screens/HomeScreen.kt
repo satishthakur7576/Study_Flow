@@ -10,6 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,6 +45,7 @@ import com.example.ui.StudyViewModel
 import com.example.ui.theme.*
 import com.example.data.*
 import java.util.*
+import java.text.SimpleDateFormat
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -63,7 +66,6 @@ fun HomeScreen(
     val focusMinutes by viewModel.todayFocusMinutes.collectAsStateWithLifecycle()
     val overallAttendance by viewModel.overallAttendancePercentage.collectAsStateWithLifecycle()
     val streakCount by viewModel.currentStreak.collectAsStateWithLifecycle()
-    val weeklyStats by viewModel.weeklyAnalytics.collectAsStateWithLifecycle()
     val activeTheme by viewModel.themeAccent.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -75,7 +77,6 @@ fun HomeScreen(
     val showHabitsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_habits_widget", true)) }
 
     var showProfileHubDialog by remember { mutableStateOf(false) }
-    var currentAnalyticsTab by remember { mutableStateOf(0) } // 0 = Focus, 1 = Tasks, 2 = Habits
     var showManualLogsDialog by remember { mutableStateOf(false) }
 
     // Derive initials e.g. "Alex S" -> "AS", default index is "S"
@@ -479,6 +480,138 @@ fun HomeScreen(
             }
         }
 
+        // --- SECTION 3.5: CLASS SCHEDULE TIMETABLE (DYNAMICAL & TODAY-ONLY) ---
+        item {
+            val daysNameList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+            val currentDayName = remember(todayDayOfWeek) { daysNameList.getOrNull(todayDayOfWeek - 1) ?: "Today" }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(cardGradient())
+                    .testTag("home_schedule_card"),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    // Title and subtitle showing today's day of week
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Today's Schedule 📚",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = currentDayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (todayClasses.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No classes registered for $currentDayName.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            todayClasses.forEach { classItem ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        // Colored vertical strip for style
+                                        Box(
+                                            modifier = Modifier
+                                                .width(4.dp)
+                                                .height(36.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.primary)
+                                        )
+
+                                        Column {
+                                            Text(
+                                                text = classItem.subjectName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "⏰ ${classItem.timeSlot}  •  🚪 Room: ${classItem.roomNumber}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    // Quick Attend & Missed choices for classes
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { viewModel.incrementTotalSessions(classItem) },
+                                            modifier = Modifier.height(32.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Missed", color = HighPriorityColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = { viewModel.incrementAttendance(classItem) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(28.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = LowPriorityColor)
+                                        ) {
+                                            Text("Attend", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // --- SECTION 4: URGENT TASKS ROW PANELS ---
         item {
             Column(
@@ -587,159 +720,11 @@ fun HomeScreen(
             }
         }
 
-        // --- SECTION 5: GRAPHICAL ANALYTICS CARD ---
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGradient()),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Weekly Analytics 📊",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Inspect activity and study volumes logged for this week.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
 
-                    // Tab bar selectors
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val tabs = listOf("Focus", "Tasks", "Habits")
-                        tabs.forEachIndexed { i, tab ->
-                            val isActive = currentAnalyticsTab == i
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .then(
-                                        if (isActive) Modifier.background(FintrixOrangeGradient) else Modifier
-                                    )
-                                    .clickable { currentAnalyticsTab = i }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tab,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isActive) Color.White
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Draw corresponding chart
-                    val chartValues = when (currentAnalyticsTab) {
-                        0 -> weeklyStats.focusHours
-                        1 -> weeklyStats.taskCompletionRates
-                        else -> weeklyStats.habitConsistencyRates
-                    }
-
-                    val chartUnit = when (currentAnalyticsTab) {
-                        0 -> "h"
-                        1 -> "%"
-                        else -> "%"
-                    }
-
-                    val activeBarColor = when (currentAnalyticsTab) {
-                        0 -> MaterialTheme.colorScheme.primary
-                        1 -> MaterialTheme.colorScheme.secondary
-                        else -> MaterialTheme.colorScheme.primary
-                    }
-
-                    val chartMax = when (currentAnalyticsTab) {
-                        0 -> {
-                            val computedMax = chartValues.maxOrNull() ?: 1f
-                            if (computedMax < 4f) 4f else computedMax
-                        }
-                        else -> 100f
-                    }
-
-                    SimpleBarChart(
-                        days = weeklyStats.days,
-                        values = chartValues,
-                        maxValue = chartMax,
-                        unit = chartUnit,
-                        barColor = activeBarColor
-                    )
-                }
-            }
-        }
-
-        // --- BRANDING BADGE: UNIQUE Visual signature from the shared image ---
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        RoundedCornerShape(24.dp)
-                    ),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.04f)),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = "Clean Interface",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Simple, intuitive and distraction-free.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
     }
+
+
 
     // --- Control Hub & Settings Panel ---
     if (showProfileHubDialog) {
@@ -1157,119 +1142,4 @@ fun HomeScreen(
     }
 }
 
-@Composable
-fun SimpleBarChart(
-    days: List<String>,
-    values: List<Float>,
-    maxValue: Float,
-    unit: String,
-    barColor: Color
-) {
-    val animatedProgress = remember { mutableStateListOf<Float>() }
-    LaunchedEffect(values) {
-        animatedProgress.clear()
-        values.forEach { _ -> animatedProgress.add(0f) }
-        delay(100)
-        values.forEachIndexed { i, value ->
-            animatedProgress[i] = value
-        }
-    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-            .padding(top = 16.dp, bottom = 12.dp)
-    ) {
-        val onSurfaceColor = MaterialTheme.colorScheme.onSurface
-
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val width = size.width
-            val height = size.height
-
-            val gridRows = 4
-            val rowHeight = height / gridRows
-
-            // 1. Draw horizontal gridlines and vertical axis guides
-            for (i in 0..gridRows) {
-                val y = i * rowHeight
-                drawLine(
-                    color = onSurfaceColor.copy(alpha = 0.08f),
-                    start = Offset(x = 0f, y = y),
-                    end = Offset(x = width, y = y),
-                    strokeWidth = 1.dp.toPx()
-                )
-            }
-
-            // 2. Compute margins and bar positions
-            val totalBars = days.size
-            if (totalBars == 0) return@Canvas
-
-            val barSpacing = 16.dp.toPx()
-            val availableBarWidth = width - (barSpacing * (totalBars + 1))
-            val barWidth = availableBarWidth / totalBars
-
-            val safeMax = if (maxValue == 0f) 1f else maxValue
-
-            val maxVal = values.maxOrNull() ?: 0f
-            val maxIndex = if (maxVal > 0f) values.indexOf(maxVal) else -1
-
-            for (i in 0 until totalBars) {
-                val day = days[i]
-                val currentRawVal = if (i < animatedProgress.size) animatedProgress[i] else 0f
-
-                // Limit maximum drawing heights
-                val normalizedValue = if (currentRawVal > safeMax) safeMax else currentRawVal
-                val percentHeight = normalizedValue / safeMax
-                val barActualHeight = (height * percentHeight * 0.85f) // Reserve some top space for badges
-
-                val barLeft = barSpacing + i * (barWidth + barSpacing)
-                val barTop = height - barActualHeight
-
-                val isHighlighted = maxIndex != -1 && i == maxIndex && currentRawVal > 0f
-                val brushColors = if (isHighlighted) {
-                    listOf(barColor.copy(alpha = 0.85f), barColor)
-                } else {
-                    listOf(barColor.copy(alpha = 0.25f), barColor.copy(alpha = 0.12f))
-                }
-
-                // Draw standard Material card bars with nice rounded top-corners
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = brushColors
-                    ),
-                    topLeft = Offset(x = barLeft, y = barTop),
-                    size = Size(width = barWidth, height = barActualHeight),
-                    cornerRadius = CornerRadius(x = 4.dp.toPx(), y = 4.dp.toPx())
-                )
-
-                // 3. Draw numerical badges over active bars
-                if (currentRawVal > 0f) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        if (currentRawVal % 1f == 0f) currentRawVal.toInt().toString() else "%.1f".format(currentRawVal),
-                        barLeft + barWidth / 2f,
-                        if (barTop - 12.dp.toPx() < 12.dp.toPx()) 12.dp.toPx() else barTop - 4.dp.toPx(),
-                        android.graphics.Paint().apply {
-                            color = onSurfaceColor.copy(alpha = 0.82f).toArgb()
-                            textSize = 10.sp.toPx()
-                            textAlign = android.graphics.Paint.Align.CENTER
-                            isFakeBoldText = true
-                        }
-                    )
-                }
-
-                // 4. Draw Days underneath on the bottom margin label
-                drawContext.canvas.nativeCanvas.drawText(
-                    day,
-                    barLeft + barWidth / 2f,
-                    height + 12.dp.toPx(),
-                    android.graphics.Paint().apply {
-                        color = onSurfaceColor.copy(alpha = 0.65f).toArgb()
-                        textSize = 11.sp.toPx()
-                        textAlign = android.graphics.Paint.Align.CENTER
-                    }
-                )
-            }
-        }
-    }
-}

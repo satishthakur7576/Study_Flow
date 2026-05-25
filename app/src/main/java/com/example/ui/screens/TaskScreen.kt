@@ -277,18 +277,20 @@ fun TaskListItem(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         // Subject Tag
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = task.subject,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
+                        if (task.subject.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = task.subject,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         // Due Date Display
@@ -333,7 +335,6 @@ fun TaskAddEditDialog(
     }
     var priorityInput by remember { mutableStateOf(initialTask?.priority ?: "MEDIUM") }
     var titleError by remember { mutableStateOf(false) }
-    var subjectError by remember { mutableStateOf(false) }
 
     val priorities = listOf("LOW", "MEDIUM", "URGENT")
 
@@ -373,23 +374,18 @@ fun TaskAddEditDialog(
                 // Subject Name Field (User enters manually)
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Subject / Class Tag", style = MaterialTheme.typography.labelMedium)
+                        Text("Subject / Class Tag (Optional)", style = MaterialTheme.typography.labelMedium)
                         OutlinedTextField(
                             value = subjectInput,
                             onValueChange = {
                                 subjectInput = it
-                                subjectError = false
                             },
                             placeholder = { Text("e.g. Maths, Physics, CAD") },
-                            isError = subjectError,
                             singleLine = true,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("task_subject_input")
                         )
-                        if (subjectError) {
-                            Text("Subject cannot be blank.", color = HighPriorityColor, style = MaterialTheme.typography.bodySmall)
-                        }
                     }
                 }
 
@@ -492,16 +488,12 @@ fun TaskAddEditDialog(
             Button(
                 onClick = {
                     val isTitleBlank = titleInput.isBlank()
-                    val isSubjectBlank = subjectInput.isBlank()
                     
                     if (isTitleBlank) {
                         titleError = true
                     }
-                    if (isSubjectBlank) {
-                        subjectError = true
-                    }
                     
-                    if (!isTitleBlank && !isSubjectBlank) {
+                    if (!isTitleBlank) {
                         onSave(titleInput.trim(), subjectInput.trim(), dateInput.trim(), priorityInput)
                     }
                 },

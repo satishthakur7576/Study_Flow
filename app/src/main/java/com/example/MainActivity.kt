@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Home
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
 enum class AppTab(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     HOME("Home", Icons.Default.Home),
+    ANALYTICS("Analytics", Icons.Default.BarChart),
     TASKS("Tasks", Icons.Default.TaskAlt),
     TIMER("Timer", Icons.Default.Timer),
     HABITS("Habits", Icons.Default.CheckCircle),
@@ -95,6 +97,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                         Text(
                             text = when (selectedTab) {
                                 AppTab.HOME -> "StudyFlow"
+                                AppTab.ANALYTICS -> "Analytics & Progress"
                                 AppTab.TASKS -> "Task Center"
                                 AppTab.TIMER -> "Pomodoro Focus"
                                 AppTab.HABITS -> "Habits Tracker"
@@ -122,6 +125,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
         ) {
             when (selectedTab) {
                 AppTab.HOME -> HomeScreen(viewModel = viewModel)
+                AppTab.ANALYTICS -> AnalyticsScreen(viewModel = viewModel)
                 AppTab.TASKS -> TaskScreen(viewModel = viewModel)
                 AppTab.TIMER -> TimerScreen(viewModel = viewModel)
                 AppTab.HABITS -> HabitScreen(viewModel = viewModel)

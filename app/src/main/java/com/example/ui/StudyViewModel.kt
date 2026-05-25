@@ -470,6 +470,78 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         compileWeeklyStats(focusRecordsList, tasksList, habitsList, completionsList)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WeeklyAnalyticsStats())
 
+    // --- Lifetime Statistics Compilation ---
+    val lifetimeAnalytics: StateFlow<LifetimeAnalyticsStats> = combine(
+        focusRecords, tasks, habits, completions, classes
+    ) { focusRecordsList, tasksList, habitsList, completionsList, classesList ->
+        val totalFocusMin = focusRecordsList.sumOf { it.durationMinutes }
+        val totalCreatedTasks = tasksList.size
+        val totalCompletedTasks = tasksList.count { it.completed }
+        val totalHabitComp = completionsList.filter { it.status == "COMPLETED" || it.status == null }.size
+        
+        val completionsByHabit = completionsList
+            .filter { it.status == "COMPLETED" || it.status == null }
+            .groupBy { it.habitId }
+        val topHabitIdAndCount = completionsByHabit.maxByOrNull { it.value.size }
+        val topHabit = topHabitIdAndCount?.let { entry ->
+            habitsList.find { it.id == entry.key }
+        }
+        val topHabitName = topHabit?.name ?: "None"
+        val topHabitIcon = topHabit?.icon ?: "🎯"
+
+        val totalAttended = classesList.sumOf { it.attendedCount }
+        val totalClassSessions = classesList.sumOf { it.totalCount }
+        val attendancePct = if (totalClassSessions == 0) 0f else (totalAttended.toFloat() / totalClassSessions.toFloat()) * 100f
+
+        var badgesCount = 0
+        if (totalFocusMin >= 300) badgesCount++ // Focus Monk (5+ hours)
+        if (totalFocusMin > 0) badgesCount++   // Focus Initiate
+        if (totalCompletedTasks >= 5) badgesCount++ // High-Achiever
+        if (totalHabitComp >= 10) badgesCount++ // Unstoppable
+        if (attendancePct >= 80f && totalClassSessions > 0) badgesCount++ // Committed Scholar
+
+        LifetimeAnalyticsStats(
+            totalFocusMinutes = totalFocusMin,
+            totalTasksCreated = totalCreatedTasks,
+            totalTasksCompleted = totalCompletedTasks,
+            totalHabitCompletions = totalHabitComp,
+            topHabitName = topHabitName,
+            topHabitIcon = topHabitIcon,
+            overallAttendancePercentage = attendancePct,
+            totalClassesAttended = totalAttended,
+            totalClassesCount = totalClassSessions,
+            activeBadgesCount = badgesCount
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LifetimeAnalyticsStats())
+
+    // --- Dynamic Daily Contributions Heatmap Data ---
+    val dailyContributions: StateFlow<Map<String, Int>> = combine(
+        focusRecords, completions, tasks
+    ) { focusRecordsList, completionsList, tasksList ->
+        val contributionsMap = mutableMapOf<String, Int>()
+
+        // 1. Focus record contributions (1 point for every 15 minutes, minimum 1 point if focused)
+        focusRecordsList.forEach { record ->
+            val date = record.dateString
+            val points = if (record.durationMinutes <= 0) 0 else (record.durationMinutes / 15).coerceAtLeast(1)
+            contributionsMap[date] = (contributionsMap[date] ?: 0) + points
+        }
+
+        // 2. Habit completions count: 1 point for each completed habit on that day
+        completionsList.filter { it.status == "COMPLETED" || it.status == null }.forEach { comp ->
+            val date = comp.dateString
+            contributionsMap[date] = (contributionsMap[date] ?: 0) + 1
+        }
+
+        // 3. Task completions count: 1 point for each completed task on its due date
+        tasksList.filter { it.completed }.forEach { task ->
+            val date = task.dueDate
+            contributionsMap[date] = (contributionsMap[date] ?: 0) + 1
+        }
+
+        contributionsMap
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     private fun compileWeeklyStats(
         focus: List<FocusRecordEntity>,
         tasksList: List<TaskEntity>,
@@ -583,6 +655,19 @@ data class WeeklyAnalyticsStats(
     val focusHours: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
     val taskCompletionRates: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
     val habitConsistencyRates: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f)
+)
+
+data class LifetimeAnalyticsStats(
+    val totalFocusMinutes: Int = 0,
+    val totalTasksCreated: Int = 0,
+    val totalTasksCompleted: Int = 0,
+    val totalHabitCompletions: Int = 0,
+    val topHabitName: String = "None",
+    val topHabitIcon: String = "🎯",
+    val overallAttendancePercentage: Float = 0f,
+    val totalClassesAttended: Int = 0,
+    val totalClassesCount: Int = 0,
+    val activeBadgesCount: Int = 0
 )
 
 class StudyViewModelFactory(private val repository: StudyRepository, private val context: Context) : ViewModelProvider.Factory {
