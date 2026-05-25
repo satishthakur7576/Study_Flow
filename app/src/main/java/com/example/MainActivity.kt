@@ -19,8 +19,10 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.StudyDatabase
@@ -61,6 +63,27 @@ enum class AppTab(val title: String, val icon: androidx.compose.ui.graphics.vect
     SCHEDULE("Schedule", Icons.Default.CalendarToday)
 }
 
+@Composable
+fun AdaptiveTabLabel(text: String, color: Color = Color.Unspecified) {
+    var fontSize by remember { mutableStateOf(10.sp) }
+
+    Text(
+        text = text,
+        fontSize = fontSize,
+        letterSpacing = (-0.2).sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.hasVisualOverflow && fontSize.value > 8f) {
+                fontSize = (fontSize.value - 0.5f).sp
+            }
+        },
+        color = color
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppLayout(viewModel: StudyViewModel) {
@@ -79,7 +102,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
                         icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
-                        label = { Text(text = tab.title, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
+                        label = { AdaptiveTabLabel(text = tab.title) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
