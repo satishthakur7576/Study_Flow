@@ -731,7 +731,7 @@ fun HomeScreen(
 
     // --- Control Hub & Settings Panel ---
     if (showProfileHubDialog) {
-        var hubTab by remember { mutableStateOf(0) } // 0=Account & Accent, 1=Advanced Stats, 2=Widgets, 3=Sync Config
+        var hubTab by remember { mutableStateOf(0) } // 0=Account & Accent, 1=Widgets, 2=Sync Config, 3=Donate
         var tempName by remember { mutableStateOf(studentName) }
 
         // Sync states
@@ -765,7 +765,7 @@ fun HomeScreen(
                             .padding(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        val sheets = listOf("Profile", "Stats", "Widgets", "Cloud", "Donate")
+                        val sheets = listOf("Profile", "Widgets", "Cloud", "Donate")
                         sheets.forEachIndexed { idx, title ->
                             val isSelected = hubTab == idx
                             Box(
@@ -864,76 +864,7 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        1 -> { // Detailed Statistics & Performance
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text("Completion Ratio", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                            Text("Calculated overall consistency rates across your active study goals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        
-                                        // Circular progress
-                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(52.dp)) {
-                                            CircularProgressIndicator(
-                                                progress = { 0.75f },
-                                                strokeWidth = 5.dp,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                            )
-                                            Text("75%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.ExtraBold)
-                                        }
-                                    }
-                                }
-
-                                Text("Habit Category Distributions", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-
-                                val habitCategories = listOf("Learning", "Health", "Personal", "Other")
-                                val completionPercentages = listOf(100, 80, 50, 60)
-                                val categoryColors = listOf(Color(0xFFFD5C25), Color(0xFFAC56FA), Color(0xFF0D99FF), Color(0xFF00C070))
-
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    habitCategories.forEachIndexed { idx, category ->
-                                        val pct = completionPercentages[idx]
-                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text(category, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                                Text("$pct%", style = MaterialTheme.typography.bodySmall, color = categoryColors[idx])
-                                            }
-                                            LinearProgressIndicator(
-                                                progress = { pct / 100f },
-                                                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                                                color = categoryColors[idx],
-                                                trackColor = categoryColors[idx].copy(alpha = 0.15f)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(HighPriorityColor.copy(alpha = 0.08f))
-                                        .padding(8.dp)
-                                ) {
-                                    Icon(imageVector = Icons.Default.EmojiEvents, contentDescription = "Trophy", tint = HighPriorityColor, modifier = Modifier.size(18.dp))
-                                    Text("Top performing category: Learning 🔥", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = HighPriorityColor)
-                                }
-                            }
-                        }
-                        2 -> { // Customizable Home Widgets configuration
+                        1 -> { // Customizable Home Widgets configuration
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Customise Widget Elements", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Text("Toggle home dashboard modules on or off to maintain a clean, minimal, or rich study space.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1014,7 +945,7 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        3 -> { // Secure cloud synchronization
+                        2 -> { // Secure cloud synchronization
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1075,7 +1006,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        4 -> { // Donation & Support QR Code
+                        3 -> { // Donation & Support QR Code
                             val clipboardManager = LocalClipboardManager.current
                             var copied by remember { mutableStateOf(false) }
 

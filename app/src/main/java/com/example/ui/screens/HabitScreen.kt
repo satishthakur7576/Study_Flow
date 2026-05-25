@@ -161,7 +161,12 @@ fun HabitScreen(
         var selectedFrequency by remember { mutableStateOf("Daily") }
         var nameError by remember { mutableStateOf(false) }
 
-        val iconsList = listOf("🌱", "💻", "🏃‍♂️", "📚", "🧘‍♂️", "💧", "🍳", "🧠", "💡", "🎨", "🚴", "🔥")
+        val iconsList = listOf(
+            "🌱", "💻", "🏃", "📚", "🧘", "💧", "🍳", "🧠",
+            "💡", "🎨", "🚴", "🔥", "✍️", "📖", "🎯", "🎓",
+            "🏋️", "🍎", "😴", "🧹", "🪙", "🎸", "🎹", "⏰",
+            "❤️", "🚶", "📈", "🐕", "🔋", "🎒", "🦷", "🌟"
+        )
         val colorsList = listOf(
             "#FD5C25" to "Sunset Red",
             "#3B82F6" to "Ocean Blue",

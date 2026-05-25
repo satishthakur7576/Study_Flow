@@ -88,7 +88,7 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
             } else {
                 context.registerReceiver(dateChangeReceiver, filter)
             }
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             // Log or ignore to guarantee application doesn't crash on restrictive OS platforms
         }
 
@@ -639,7 +639,7 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         super.onCleared()
         try {
             context.unregisterReceiver(dateChangeReceiver)
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             // Ignore if already unregistered or not registered
         }
     }
