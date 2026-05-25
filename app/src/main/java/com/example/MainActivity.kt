@@ -1,5 +1,6 @@
 package com.example
 
+// Live APK package update trigger with INTERNET permission
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -65,21 +66,14 @@ enum class AppTab(val title: String, val icon: androidx.compose.ui.graphics.vect
 
 @Composable
 fun AdaptiveTabLabel(text: String, color: Color = Color.Unspecified) {
-    var fontSize by remember { mutableStateOf(10.sp) }
-
     Text(
         text = text,
-        fontSize = fontSize,
-        letterSpacing = (-0.2).sp,
+        fontSize = 9.sp,
+        letterSpacing = (-0.3).sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Ellipsis,
-        onTextLayout = { textLayoutResult ->
-            if (textLayoutResult.hasVisualOverflow && fontSize.value > 8f) {
-                fontSize = (fontSize.value - 0.5f).sp
-            }
-        },
         color = color
     )
 }

@@ -288,6 +288,12 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
     // --- Pomodoro Timer Functions ---
     fun startTimer() {
         if (_timerIsRunning.value) return
+        if (_timerSecondsLeft.value <= 0) {
+            _timerSecondsLeft.value = if (_isBreakMode.value) _breakDurationMinutes.value * 60 else _focusDurationMinutes.value * 60
+        }
+        if (_timerSecondsLeft.value <= 0) {
+            _timerSecondsLeft.value = 25 * 60 // Safe fallback
+        }
         _timerIsRunning.value = true
         timerJob = viewModelScope.launch {
             while (_timerSecondsLeft.value > 0) {
@@ -323,15 +329,7 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
 
     private fun onTimerSectionComplete() {
         viewModelScope.launch {
-            try {
-                // Play soft beep alert
-                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90)
-                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
-                delay(600)
-                toneGen.release()
-            } catch (t: Throwable) {
-                // Ignore audio-related runtime bugs
-            }
+            // Omit ToneGenerator to prevent SIGSEGV native crashes in headless, virtualized VM audio platforms.
 
             if (!_isBreakMode.value) {
                 // Work session ended: Log focus minutes dynamically

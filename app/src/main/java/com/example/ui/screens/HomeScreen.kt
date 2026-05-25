@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.StudyViewModel
 import com.example.ui.theme.*
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import coil.compose.AsyncImage
 import com.example.data.*
 import java.util.*
 import java.text.SimpleDateFormat
@@ -762,7 +765,7 @@ fun HomeScreen(
                             .padding(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        val sheets = listOf("Profile", "Stats", "Widgets", "Cloud")
+                        val sheets = listOf("Profile", "Stats", "Widgets", "Cloud", "Donate")
                         sheets.forEachIndexed { idx, title ->
                             val isSelected = hubTab == idx
                             Box(
@@ -776,7 +779,7 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     text = title,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1070,6 +1073,130 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
                                 )
+                            }
+                        }
+                        4 -> { // Donation & Support QR Code
+                            val clipboardManager = LocalClipboardManager.current
+                            var copied by remember { mutableStateOf(false) }
+
+                            LaunchedEffect(copied) {
+                                if (copied) {
+                                    delay(2000)
+                                    copied = false
+                                }
+                            }
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "Support Development & Donate 💖",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "If you enjoy using this application and want to support the creator, consider making a small contribution.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.linearGradient(listOf(Color(0xFFFD5C25), MaterialTheme.colorScheme.primary))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "ST",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Satish Thakur",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "satishthakur7576-2@oksbi",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString("satishthakur7576-2@oksbi"))
+                                            copied = true
+                                        },
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (copied) Color(0xFF00C070).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                                            .size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                            contentDescription = "Copy UPI ID",
+                                            tint = if (copied) Color(0xFF00C070) else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(140.dp)
+                                                .background(Color.White),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            AsyncImage(
+                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi%3A%2F%2Fpay%3Fpa%3Dsatishthakur7576-2%40oksbi%26pn%3DSatish%2520Thakur",
+                                                contentDescription = "UPI Payment QR Code",
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "Scan to pay with any UPI app",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF333333),
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

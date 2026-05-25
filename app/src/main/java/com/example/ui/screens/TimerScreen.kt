@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +43,16 @@ fun TimerScreen(
     val totalSessions by viewModel.totalSessions.collectAsStateWithLifecycle()
     val focusDurationMinutes by viewModel.focusDurationMinutes.collectAsStateWithLifecycle()
     val breakDurationMinutes by viewModel.breakDurationMinutes.collectAsStateWithLifecycle()
+
+    val view = LocalView.current
+    DisposableEffect(isRunning) {
+        if (isRunning) {
+            view.keepScreenOn = true
+        }
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
 
     var showCustomFocusDialog by remember { mutableStateOf(false) }
     var showCustomBreakDialog by remember { mutableStateOf(false) }
