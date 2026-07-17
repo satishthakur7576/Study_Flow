@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.StudyDatabase
 import com.example.data.StudyRepository
+import com.example.data.GeminiService
 import com.example.ui.StudyViewModel
 import com.example.ui.StudyViewModelFactory
 import com.example.ui.screens.*
@@ -100,6 +101,7 @@ data class ChatMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppLayout(viewModel: StudyViewModel) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(AppTab.HOME) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -116,6 +118,8 @@ fun MainAppLayout(viewModel: StudyViewModel) {
     val tasks by viewModel.tasks.collectAsState()
     val currentStreak by viewModel.currentStreak.collectAsState()
     val todayFocusMinutes by viewModel.todayFocusMinutes.collectAsState()
+    val habits by viewModel.habits.collectAsState()
+    val classes by viewModel.classes.collectAsState()
 
     // Global AI assistant chat history
     val aiChatHistory = remember {
@@ -355,7 +359,10 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(16.dp))
-                                        .clickable { selectedTab = tab }
+                                        .clickable {
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                            selectedTab = tab
+                                        }
                                         .padding(vertical = 4.dp)
                                         .testTag("nav_item_${tab.name.lowercase()}"),
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -760,24 +767,32 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                                     messageInput = ""
                                     isThinking = true
 
-                                    // Simulate beautiful delayed responses
                                     scope.launch {
-                                        kotlinx.coroutines.delay(1200)
-                                        val responseText = when {
-                                            userText.contains("streak", ignoreCase = true) -> {
-                                                "Exceptional work! You've maintained a perfect active streak. Rest is as vital as focus—schedule a 10-minute mindful break in the Pomodoro tab tonight."
+                                        val isConfigured = GeminiService.isApiKeyConfigured()
+                                        if (isConfigured) {
+                                            val chatHistoryList = aiChatHistory.map { it.sender to it.text }
+                                            val responseText = GeminiService.generateAcademicAdvice(
+                                                prompt = userText,
+                                                studentName = studentName,
+                                                todayFocusMinutes = todayFocusMinutes,
+                                                currentStreak = currentStreak,
+                                                tasksCompleted = tasks.count { it.completed },
+                                                tasksTotal = tasks.size,
+                                                totalHabits = habits.size,
+                                                totalClasses = classes.size,
+                                                chatHistory = chatHistoryList
+                                            )
+                                            if (responseText == "API_KEY_MISSING") {
+                                                val fallbackResponse = getSimulatedResponse(userText)
+                                                aiChatHistory.add(ChatMessage("FocusBot", fallbackResponse + "\n\n💡 *Note: FocusBot is running in offline demo mode. To unlock live AI feedback, enter your GEMINI_API_KEY in the AI Studio Secrets panel.*", isUser = false))
+                                            } else {
+                                                aiChatHistory.add(ChatMessage("FocusBot", responseText, isUser = false))
                                             }
-                                            userText.contains("procrastination", ignoreCase = true) || userText.contains("recovery", ignoreCase = true) -> {
-                                                "To break inertia, use the 5-minute Pomodoro rule in the Timer screen. Commit to working for just 5 minutes. Often, building starting momentum is 90% of the battle!"
-                                            }
-                                            userText.contains("schedule", ignoreCase = true) || userText.contains("class", ignoreCase = true) -> {
-                                                "You have regular lectures mapped out. Keeping consistent logs will push your overall lecture attendance over the target 90% milestone!"
-                                            }
-                                            else -> {
-                                                "Fascinating inquiry. I suggest prioritizing tasks tagged 'Urgent' on your Kanban Board first, then checking off your daily habits before 8 PM to preserve high consistency!"
-                                            }
+                                        } else {
+                                            kotlinx.coroutines.delay(1000)
+                                            val fallbackResponse = getSimulatedResponse(userText)
+                                            aiChatHistory.add(ChatMessage("FocusBot", fallbackResponse + "\n\n💡 *Note: FocusBot is running in offline demo mode. To unlock live AI feedback, enter your GEMINI_API_KEY in the AI Studio Secrets panel.*", isUser = false))
                                         }
-                                        aiChatHistory.add(ChatMessage("FocusBot", responseText, isUser = false))
                                         isThinking = false
                                     }
                                 }
@@ -856,6 +871,23 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+private fun getSimulatedResponse(userText: String): String {
+    return when {
+        userText.contains("streak", ignoreCase = true) -> {
+            "Exceptional work! You've maintained a perfect active streak. Rest is as vital as focus—schedule a 10-minute mindful break in the Pomodoro tab tonight."
+        }
+        userText.contains("procrastination", ignoreCase = true) || userText.contains("recovery", ignoreCase = true) -> {
+            "To break inertia, use the 5-minute Pomodoro rule in the Timer screen. Commit to working for just 5 minutes. Often, building starting momentum is 90% of the battle!"
+        }
+        userText.contains("schedule", ignoreCase = true) || userText.contains("class", ignoreCase = true) -> {
+            "You have regular lectures mapped out. Keeping consistent logs will push your overall lecture attendance over the target 90% milestone!"
+        }
+        else -> {
+            "Fascinating inquiry. I suggest prioritizing tasks tagged 'Urgent' on your Kanban Board first, then checking off your daily habits before 8 PM to preserve high consistency!"
         }
     }
 }

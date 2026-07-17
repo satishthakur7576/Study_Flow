@@ -47,6 +47,122 @@ import com.example.data.*
 import java.util.*
 import java.text.SimpleDateFormat
 
+@Composable
+fun AnimatedMeshGradient(isDark: Boolean, modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "mesh_gradient")
+
+    // Animate positions for multiple color blobs to create the organic "mesh" movement
+    val t1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2 * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "t1"
+    )
+
+    val t2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2 * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(18000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "t2"
+    )
+
+    val t3 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2 * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(15000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "t3"
+    )
+
+    // Base background color
+    val baseColor = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+
+    // Vibrant but elegant mesh colors (adjusted opacity to keep text readable)
+    val color1 = if (isDark) Color(0x2B6366F1) else Color(0x13818CF8) // Indigo-like
+    val color2 = if (isDark) Color(0x2B8B5CF6) else Color(0x13C084FC) // Purple-like
+    val color3 = if (isDark) Color(0x1F06B6D4) else Color(0x0E22D3EE) // Cyan-like
+    val color4 = if (isDark) Color(0x24EC4899) else Color(0x13F472B6) // Pink-like
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+
+        if (w == 0f || h == 0f) return@Canvas
+
+        // Draw solid base background
+        drawRect(color = baseColor)
+
+        // Calculate moving center offsets for the radial gradients using sine and cosine functions
+        val x1 = w * 0.5f + (w * 0.3f * kotlin.math.cos(t1.toDouble())).toFloat()
+        val y1 = h * 0.4f + (h * 0.2f * kotlin.math.sin(t1.toDouble())).toFloat()
+        val r1 = kotlin.math.max(w, h) * 0.6f
+
+        val x2 = w * 0.4f + (w * 0.25f * kotlin.math.sin(t2.toDouble())).toFloat()
+        val y2 = h * 0.6f + (h * 0.25f * kotlin.math.cos(t2.toDouble())).toFloat()
+        val r2 = kotlin.math.max(w, h) * 0.7f
+
+        val x3 = w * 0.6f + (w * 0.35f * kotlin.math.cos(t3.toDouble() + 1.5)).toFloat()
+        val y3 = h * 0.5f + (h * 0.2f * kotlin.math.sin(t3.toDouble() - 1.0)).toFloat()
+        val r3 = kotlin.math.max(w, h) * 0.5f
+
+        val x4 = w * 0.3f + (w * 0.2f * kotlin.math.sin(t1.toDouble() * 0.5 + 2.0)).toFloat()
+        val y4 = h * 0.3f + (h * 0.3f * kotlin.math.cos(t2.toDouble() * 0.5 - 1.5)).toFloat()
+        val r4 = kotlin.math.max(w, h) * 0.55f
+
+        // Draw radial brush 1
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color1, Color.Transparent),
+                center = Offset(x1, y1),
+                radius = r1
+            ),
+            center = Offset(x1, y1),
+            radius = r1
+        )
+
+        // Draw radial brush 2
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color2, Color.Transparent),
+                center = Offset(x2, y2),
+                radius = r2
+            ),
+            center = Offset(x2, y2),
+            radius = r2
+        )
+
+        // Draw radial brush 3
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color3, Color.Transparent),
+                center = Offset(x3, y3),
+                radius = r3
+            ),
+            center = Offset(x3, y3),
+            radius = r3
+        )
+
+        // Draw radial brush 4
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color4, Color.Transparent),
+                center = Offset(x4, y4),
+                radius = r4
+            ),
+            center = Offset(x4, y4),
+            radius = r4
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
@@ -133,6 +249,8 @@ fun HomeScreen(
             .fillMaxSize()
             .background(if (isDarkThemeActive) Color(0xFF0F172A) else Color(0xFFF8FAFC))
     ) {
+        AnimatedMeshGradient(isDark = isDarkThemeActive)
+
         val width = maxWidth
         val isTablet = width >= 600.dp
         val isSmallPhone = width < 360.dp
@@ -292,6 +410,17 @@ fun HomeScreen(
                 label = "productivity_ring"
             )
 
+            val infiniteTransition = rememberInfiniteTransition(label = "hero_grad")
+            val animatedOffset by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1000f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(6000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "hero_grad_val"
+            )
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -311,9 +440,9 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED)),
-                                start = Offset(0f, 0f),
-                                end = Offset(1000f, 1000f)
+                                colors = listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED), Color(0xFF9333EA)),
+                                start = Offset(animatedOffset, 0f),
+                                end = Offset(1000f - animatedOffset, 1000f)
                             )
                         )
                         .padding(24.dp)
@@ -1297,28 +1426,41 @@ fun HomeScreen(
                                             }
                                         }
 
-                                        // Goal priority badge
-                                        val priorityBg = when (task.priority) {
-                                            "URGENT" -> Color(0xFFEF4444).copy(alpha = 0.12f)
-                                            "HIGH" -> Color(0xFFF59E0B).copy(alpha = 0.12f)
-                                            else -> Color(0xFF10B981).copy(alpha = 0.12f)
-                                        }
-                                        val priorityText = when (task.priority) {
-                                            "URGENT" -> Color(0xFFEF4444)
-                                            "HIGH" -> Color(0xFFF59E0B)
-                                            else -> Color(0xFF10B981)
+                                        // Goal priority badge (Soft, Premium Pastel)
+                                        val isDark = isDarkThemeActive
+                                        val (pBg, pTxt, pBorder) = when (task.priority.uppercase()) {
+                                            "URGENT", "HIGH" -> Triple(
+                                                if (isDark) Color(0xFFEF4444).copy(alpha = 0.18f) else Color(0xFFFEE2E2),
+                                                if (isDark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+                                                if (isDark) Color(0xFFEF4444).copy(alpha = 0.3f) else Color(0xFFFCA5A5)
+                                            )
+                                            "MEDIUM" -> Triple(
+                                                if (isDark) Color(0xFFF59E0B).copy(alpha = 0.18f) else Color(0xFFFEF3C7),
+                                                if (isDark) Color(0xFFFCD34D) else Color(0xFFB45309),
+                                                if (isDark) Color(0xFFF59E0B).copy(alpha = 0.3f) else Color(0xFFFDE68A)
+                                            )
+                                            else -> Triple(
+                                                if (isDark) Color(0xFF10B981).copy(alpha = 0.18f) else Color(0xFFD1FAE5),
+                                                if (isDark) Color(0xFF6EE7B7) else Color(0xFF047857),
+                                                if (isDark) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFFA7F3D0)
+                                            )
                                         }
 
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(priorityBg)
+                                                .background(pBg)
+                                                .border(BorderStroke(1.dp, pBorder), RoundedCornerShape(6.dp))
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                                         ) {
                                             Text(
-                                                text = task.priority,
+                                                text = when (task.priority.uppercase()) {
+                                                    "URGENT", "HIGH" -> "High"
+                                                    "MEDIUM" -> "Medium"
+                                                    else -> "Low"
+                                                },
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    color = priorityText,
+                                                    color = pTxt,
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 9.sp
                                                 )

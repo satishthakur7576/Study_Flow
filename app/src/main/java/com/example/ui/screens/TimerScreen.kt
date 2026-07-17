@@ -36,6 +36,7 @@ fun TimerScreen(
     viewModel: StudyViewModel,
     modifier: Modifier = Modifier
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val secondsLeft by viewModel.timerSecondsLeft.collectAsStateWithLifecycle()
     val isRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
     val isBreakMode by viewModel.isBreakMode.collectAsStateWithLifecycle()
@@ -190,7 +191,10 @@ fun TimerScreen(
                 ) {
                     // Reset Button
                     FilledTonalIconButton(
-                        onClick = { viewModel.resetTimer() },
+                        onClick = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            viewModel.resetTimer()
+                        },
                         modifier = Modifier
                             .size(54.dp)
                             .testTag("reset_timer_button")
@@ -210,6 +214,7 @@ fun TimerScreen(
                             .clip(CircleShape)
                             .background(buttonGradient)
                             .clickable {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                 if (isRunning) viewModel.pauseTimer() else viewModel.startTimer()
                             }
                             .testTag("toggle_timer_button"),
@@ -225,7 +230,10 @@ fun TimerScreen(
 
                     // Skip Session Button
                     FilledTonalIconButton(
-                        onClick = { viewModel.skipSession() },
+                        onClick = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            viewModel.skipSession()
+                        },
                         modifier = Modifier
                             .size(54.dp)
                             .testTag("skip_timer_button")

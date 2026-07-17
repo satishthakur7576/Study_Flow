@@ -427,6 +427,47 @@ fun TaskListItem(
                             }
                         }
 
+                        // Color-Coded Priority Badge (Soft, Premium Pastel)
+                        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+                        val (pBg, pTxt, pBorder) = when (task.priority.uppercase()) {
+                            "URGENT", "HIGH" -> Triple(
+                                if (isDark) Color(0xFFEF4444).copy(alpha = 0.18f) else Color(0xFFFEE2E2),
+                                if (isDark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+                                if (isDark) Color(0xFFEF4444).copy(alpha = 0.3f) else Color(0xFFFCA5A5)
+                            )
+                            "MEDIUM" -> Triple(
+                                if (isDark) Color(0xFFF59E0B).copy(alpha = 0.18f) else Color(0xFFFEF3C7),
+                                if (isDark) Color(0xFFFCD34D) else Color(0xFFB45309),
+                                if (isDark) Color(0xFFF59E0B).copy(alpha = 0.3f) else Color(0xFFFDE68A)
+                            )
+                            else -> Triple(
+                                if (isDark) Color(0xFF10B981).copy(alpha = 0.18f) else Color(0xFFD1FAE5),
+                                if (isDark) Color(0xFF6EE7B7) else Color(0xFF047857),
+                                if (isDark) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFFA7F3D0)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(pBg)
+                                .border(BorderStroke(1.dp, pBorder), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = when (task.priority.uppercase()) {
+                                    "URGENT", "HIGH" -> "High"
+                                    "MEDIUM" -> "Medium"
+                                    else -> "Low"
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = pTxt,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+
                         // Due Date Display
                         Text(
                             text = "📅 $displayDate",

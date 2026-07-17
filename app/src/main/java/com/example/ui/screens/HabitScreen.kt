@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -411,12 +412,22 @@ fun HabitCard(
     onToggleDate: (String, String?) -> Unit,
     onDelete: () -> Unit
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     // Calculate completions this week
     val habitCompletionsThisWeek = completions.filter {
         it.habitId == habit.id && weekDates.contains(it.dateString) && it.status == "COMPLETED"
     }
     val completionsCount = habitCompletionsThisWeek.size
     val weeklyProgress = if (weekDates.isNotEmpty()) completionsCount.toFloat() / weekDates.size.toFloat() else 0f
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = weeklyProgress,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "habit_weekly_progress"
+    )
 
     // Dynamically parse habit custom color
     val customColor = remember(habit.colorHex) {
@@ -543,7 +554,7 @@ fun HabitCard(
                     )
                 }
                 LinearProgressIndicator(
-                    progress = { weeklyProgress },
+                    progress = { animatedProgress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
@@ -603,6 +614,7 @@ fun HabitCard(
                                 .background(circleBg)
                                 .then(if (circleBorder != null) Modifier.border(circleBorder, CircleShape) else Modifier)
                                 .clickable {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                     val currentStatus = if (completion == null) null else (completion.status ?: "COMPLETED")
                                     val nextStatus = when (currentStatus) {
                                         "COMPLETED" -> "FAILED"
