@@ -16,23 +16,23 @@ val AccentGreen = Color(0xFF10B981) // High-contrast green
 val AccentBlue = Color(0xFF3B82F6) // Electric blue metrics
 
 // Light Theme Coordinates (High Contrast Clean Off-White)
-val SoftLightBg = Color(0xFFF8FAFC) // Sleek Slate-50 background
+val SoftLightBg = Color(0xFFFAFAFA) // Premium #FAFAFA requested by UX Architect
 val LightCardBg = Color(0xFFFFFFFF) // Crisp brilliant white card surface
-val LightTextPrimary = Color(0xFF0F172A) // Dark slate-900 maximum readability
-val LightTextSecondary = Color(0xFF64748B) // Slate-500 subtexts
-val LightOutlineColor = Color(0xFFCBD5E1) // Smart card border layout
+val LightTextPrimary = Color(0xFF111827) // Dark slate-900 maximum readability
+val LightTextSecondary = Color(0xFF6B7280) // Slate-500 subtexts
+val LightOutlineColor = Color(0xFFE5E7EB) // Smart refined border layout (1dp soft gray)
 
 // Dark Theme Coordinates (Premium Luxury Fintrix Matte Black)
-val ObsidianDarkBg = Color(0xFF0C0D0E) // Ultimate high-end luxury charcoal black background
-val ObsidianCardBg = Color(0xFF15161A) // Sleek matte dark carbon card container
-val DarkTextPrimary = Color(0xFFF3F4F6) // Crisp snow off-white for perfect legibility
-val DarkTextSecondary = Color(0xFF8F929C) // Exquisite slate-grey subtext/descriptions
-val DarkOutlineColor = Color(0xFF25262B) // Ultra-smart refined dark card outline border
+val ObsidianDarkBg = Color(0xFF0F1115) // Premium #0F1115 requested by UX Architect
+val ObsidianCardBg = Color(0xFF15181E) // Sleek matte dark carbon card container
+val DarkTextPrimary = Color(0xFFF9FAFB) // Crisp snow off-white for perfect legibility
+val DarkTextSecondary = Color(0xFF9CA3AF) // Exquisite slate-grey subtext/descriptions
+val DarkOutlineColor = Color(0xFF1F2937) // Ultra-smart refined dark card outline border
 
 // Styled Priority Levels with Maximum Contrast (Vibrant/Clear)
-val LowPriorityColor = Color(0xFF10B981) // Active/Done Green
-val MediumPriorityColor = Color(0xFFF59E0B) // Warn Amber
-val HighPriorityColor = Color(0xFFEF4444) // Urgent vivid crimson
+val LowPriorityColor = Color(0xFF10B981) // Active/Done Green (Success)
+val MediumPriorityColor = Color(0xFFF59E0B) // Warn Amber (Warning)
+val HighPriorityColor = Color(0xFFEF4444) // Urgent vivid crimson (Danger)
 
 // --- PREMIUM HIGH-FIDELITY GRADIENTS FROM SHOWN IMAGES ---
 val FintrixOrangeGradient = Brush.linearGradient(
@@ -103,52 +103,52 @@ data class DynamicGradientColors(
 fun getDynamicColors(accentName: String): DynamicGradientColors {
     return when (accentName) {
         "Ocean Blue" -> DynamicGradientColors(
-            primaryColor = Color(0xFF3B82F6),
+            primaryColor = Color(0xFF4F7CFF), // Linear-grade Stripe Blue
             gradientBrush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFF60A5FA),
-                    Color(0xFF3B82F6),
-                    Color(0xFF1D4ED8)
+                    Color(0xFF8AB4FF),
+                    Color(0xFF4F7CFF),
+                    Color(0xFF1E56F5)
                 )
             ),
-            lightAccentColor = Color(0xFF93C5FD),
-            darkAccentColor = Color(0xFF1E3A8A)
+            lightAccentColor = Color(0xFFEBF1FF),
+            darkAccentColor = Color(0xFF1B2C5A)
         )
         "Forest Green" -> DynamicGradientColors(
-            primaryColor = Color(0xFF10B981),
+            primaryColor = Color(0xFF10B981), // Success Emerald Green
             gradientBrush = Brush.linearGradient(
                 colors = listOf(
                     Color(0xFF34D399),
                     Color(0xFF10B981),
-                    Color(0xFF047857)
+                    Color(0xFF065F46)
                 )
             ),
-            lightAccentColor = Color(0xFF6EE7B7),
+            lightAccentColor = Color(0xFFECFDF5),
             darkAccentColor = Color(0xFF064E3B)
         )
         "Lavender" -> DynamicGradientColors(
-            primaryColor = Color(0xFF8B5CF6),
+            primaryColor = Color(0xFF7C3AED), // Notion-grade Premium Purple
             gradientBrush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFFC084FC),
-                    Color(0xFF8B5CF6),
+                    Color(0xFFA78BFA),
+                    Color(0xFF7C3AED),
                     Color(0xFF5B21B6)
                 )
             ),
-            lightAccentColor = Color(0xFFDDD6FE),
-            darkAccentColor = Color(0xFF4C1D95)
+            lightAccentColor = Color(0xFFF5F3FF),
+            darkAccentColor = Color(0xFF2E1065)
         )
-        else -> DynamicGradientColors( // "Sunset Red" or other
-            primaryColor = Color(0xFFFD5C25),
+        else -> DynamicGradientColors( // "Sunset Red" / Danger or Urgent Hue
+            primaryColor = Color(0xFFEF4444), // Danger Crimson Red
             gradientBrush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFFFF8E3C),
-                    Color(0xFFFD5C25),
-                    Color(0xFFC02A00)
+                    Color(0xFFF87171),
+                    Color(0xFFEF4444),
+                    Color(0xFF991B1B)
                 )
             ),
-            lightAccentColor = Color(0xFFFFBFAB),
-            darkAccentColor = Color(0xFF4E1605)
+            lightAccentColor = Color(0xFFFEF2F2),
+            darkAccentColor = Color(0xFF450A0A)
         )
     }
 }

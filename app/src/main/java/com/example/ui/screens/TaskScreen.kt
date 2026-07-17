@@ -3,7 +3,10 @@ package com.example.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -39,8 +43,16 @@ fun TaskScreen(
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
 
     var filterState by remember { mutableStateOf("Active") } // "All", "Active", "Completed"
+    var viewMode by remember { mutableStateOf("List") } // "List" or "Board"
     var showAddDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<TaskEntity?>(null) }
+
+    // Dynamic gradient brush from primary and secondary colors
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val secondaryColor = MaterialTheme.colorScheme.secondary
+    val dynamicFabGradient = remember(primaryColor, secondaryColor) {
+        Brush.linearGradient(colors = listOf(primaryColor, secondaryColor))
+    }
 
     // Sort/Filter list logic
     val filteredTasks = remember(tasks, filterState) {
@@ -49,7 +61,6 @@ fun TaskScreen(
             "Completed" -> tasks.filter { it.completed }
             else -> tasks
         }
-        // Group or sort by due date
         list.sortedBy { it.dueDate }
     }
 
@@ -61,7 +72,7 @@ fun TaskScreen(
                     .navigationBarsPadding()
                     .size(56.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(FintrixOrangeGradient)
+                    .background(dynamicFabGradient)
                     .clickable { showAddDialog = true }
                     .testTag("add_task_fab"),
                 contentAlignment = Alignment.Center
@@ -76,77 +87,193 @@ fun TaskScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // --- TOP FILTER CHIPS ---
+            // --- TOP SWITCHER & FILTERS ROW ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val filters = listOf("Active", "Completed", "All")
-                filters.forEach { filter ->
-                    val isSelected = filterState == filter
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { filterState = filter },
-                        label = { Text(filter) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier.testTag("filter_chip_$filter")
+                // View Mode Switcher: segmented capsule list
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    val views = listOf("List", "Board")
+                    views.forEach { mode ->
+                        val isSelected = viewMode == mode
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent)
+                                .clickable { viewMode = mode }
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (mode == "List") Icons.Default.List else Icons.Default.Dashboard,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = mode,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Filter Chips (Only shown in List mode)
+                if (viewMode == "List") {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val filters = listOf("Active", "Completed")
+                        filters.forEach { filter ->
+                            val isSelected = filterState == filter
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                        else Color.Transparent
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { filterState = filter }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = filter,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Inline board helpful hint
+                    Text(
+                        text = "Kanban Active",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            // --- TASK ITEMS list ---
-            if (filteredTasks.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+            // --- MAIN INTERFACE: LIST OR BOARD ---
+            if (viewMode == "List") {
+                // --- LIST VIEW ---
+                if (filteredTasks.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Task,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Text(
-                            text = "No tasks found in \"$filterState\"",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                        Text(
-                            text = "Tap the '+' button to log a homework, test, or project assignment.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.width(260.dp)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Task,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Text(
+                                text = "No tasks found in \"$filterState\"",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = "Tap the '+' button to log a homework, test, or project assignment.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.width(260.dp)
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 80.dp) // Cushion fab
+                    ) {
+                        items(filteredTasks, key = { it.id }) { task ->
+                            TaskListItem(
+                                task = task,
+                                onToggleComplete = { isChecked ->
+                                    viewModel.updateTaskCompletion(task, isChecked)
+                                },
+                                onEdit = { taskToEdit = task },
+                                onDelete = { viewModel.deleteTask(task) }
+                            )
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp) // Cushion fab
+                // --- KANBAN BOARD VIEW (HORIZONTALLY SCROLLABLE LANES) ---
+                val urgentTasks = remember(tasks) { tasks.filter { !it.completed && (it.priority == "URGENT" || it.priority == "HIGH") } }
+                val mediumTasks = remember(tasks) { tasks.filter { !it.completed && it.priority == "MEDIUM" } }
+                val lowTasks = remember(tasks) { tasks.filter { !it.completed && it.priority == "LOW" } }
+                val completedTasks = remember(tasks) { tasks.filter { it.completed } }
+
+                val lanes = listOf(
+                    KanbanLaneData("Urgent ⚡", urgentTasks, HighPriorityColor, "URGENT"),
+                    KanbanLaneData("Medium 📈", mediumTasks, MediumPriorityColor, "MEDIUM"),
+                    KanbanLaneData("Low 🌱", lowTasks, LowPriorityColor, "LOW"),
+                    KanbanLaneData("Completed ✅", completedTasks, MaterialTheme.colorScheme.primary, "COMPLETED")
+                )
+
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredTasks, key = { it.id }) { task ->
-                        TaskListItem(
-                            task = task,
-                            onToggleComplete = { isChecked ->
-                                viewModel.updateTaskCompletion(task, isChecked)
+                    lanes.forEach { lane ->
+                        KanbanLaneColumn(
+                            laneTitle = lane.title,
+                            laneTasks = lane.tasks,
+                            accentColor = lane.accentColor,
+                            priorityString = lane.priority,
+                            onToggleComplete = { task, completed ->
+                                viewModel.updateTaskCompletion(task, completed)
                             },
-                            onEdit = { taskToEdit = task },
-                            onDelete = { viewModel.deleteTask(task) }
+                            onCyclePriority = { task ->
+                                val nextPriority = when (task.priority) {
+                                    "LOW" -> "MEDIUM"
+                                    "MEDIUM" -> "URGENT"
+                                    else -> "LOW"
+                                }
+                                viewModel.updateTaskDetails(task.copy(priority = nextPriority))
+                            },
+                            onEdit = { task -> taskToEdit = task },
+                            onDelete = { task -> viewModel.deleteTask(task) }
                         )
                     }
                 }
@@ -509,3 +636,235 @@ fun TaskAddEditDialog(
         }
     )
 }
+
+data class KanbanLaneData(
+    val title: String,
+    val tasks: List<TaskEntity>,
+    val accentColor: Color,
+    val priority: String
+)
+
+@Composable
+fun KanbanLaneColumn(
+    laneTitle: String,
+    laneTasks: List<TaskEntity>,
+    accentColor: Color,
+    priorityString: String,
+    onToggleComplete: (TaskEntity, Boolean) -> Unit,
+    onCyclePriority: (TaskEntity) -> Unit,
+    onEdit: (TaskEntity) -> Unit,
+    onDelete: (TaskEntity) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(260.dp)
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Lane Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                )
+                Text(
+                    text = laneTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Task Counter badge
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "${laneTasks.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+        )
+
+        // Cards List
+        if (laneTasks.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Inbox,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "No cards",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                items(laneTasks, key = { it.id }) { task ->
+                    KanbanCardItem(
+                        task = task,
+                        accentColor = accentColor,
+                        onToggleComplete = { onToggleComplete(task, it) },
+                        onCyclePriority = { onCyclePriority(task) },
+                        onEdit = { onEdit(task) },
+                        onDelete = { onDelete(task) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun KanbanCardItem(
+    task: TaskEntity,
+    accentColor: Color,
+    onToggleComplete: (Boolean) -> Unit,
+    onCyclePriority: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEdit() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = task.completed,
+                        onCheckedChange = { onToggleComplete(it) },
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    if (task.subject.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(accentColor.copy(alpha = 0.1f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = task.subject,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = if (task.completed) MaterialTheme.colorScheme.onSurfaceVariant else accentColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                if (!task.completed) {
+                    IconButton(
+                        onClick = onCyclePriority,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Cycle lane priority",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (task.completed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📅 ${task.dueDate}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Delete task",
+                        tint = HighPriorityColor.copy(alpha = 0.8f),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
