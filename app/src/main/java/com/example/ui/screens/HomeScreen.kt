@@ -2,42 +2,39 @@ package com.example.ui.screens
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,7 +79,7 @@ fun HomeScreen(
     var showProfileHubDialog by remember { mutableStateOf(false) }
     var showManualLogsDialog by remember { mutableStateOf(false) }
 
-    // Derive initials e.g. "Alex S" -> "AS", default index is "S"
+    // Derive initials e.g. "Alex S" -> "AS"
     val initials = remember(studentName) {
         val words = studentName.trim().split("\\s+".toRegex())
         if (words.size >= 2) {
@@ -103,378 +100,376 @@ fun HomeScreen(
     val todayClasses = remember(classes) {
         classes.filter { it.dayOfWeek == todayDayOfWeek }.sortedBy { it.timeSlot }
     }
-    val nextClass = todayClasses.firstOrNull()
 
-    LazyColumn(
+    // Theme Color Mapping
+    val isDarkThemeActive by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+
+    // 1. HEADER GREETER PERIOD
+    val hourCalendar = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    val greetingPeriod = when {
+        hourCalendar in 0..11 -> "Good Morning ☀️"
+        hourCalendar in 12..16 -> "Good Afternoon 🌅"
+        else -> "Good Evening 🌌"
+    }
+
+    // Dynamic calculations for Hero Card Progress
+    val todayCompletedTasksCount = tasks.count { it.completed && it.dueDate == todayStr }
+    val todayTotalTasksCount = tasks.count { it.dueDate == todayStr }
+    val totalHabitsCount = habits.size
+    val completedHabitsCount = habits.count { habit ->
+        completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
+    }
+
+    val taskRate = if (todayTotalTasksCount > 0) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 1f
+    val habitRate = if (totalHabitsCount > 0) completedHabitsCount.toFloat() / totalHabitsCount.toFloat() else 1f
+    val overallProductivityPercentage = if (todayTotalTasksCount == 0 && totalHabitsCount == 0) {
+        85 // beautiful aesthetic fallback default
+    } else {
+        (((taskRate + habitRate) / 2f) * 100).toInt().coerceIn(15, 100)
+    }
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .testTag("home_screen"),
-        contentPadding = PaddingValues(bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(if (isDarkThemeActive) Color(0xFF0F172A) else Color(0xFFF8FAFC))
     ) {
-        // --- BOLD HEADER ROW (Prinstine light header matching the image) ---
-        item {
-            val hourCalendar = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-            val greetingPeriod = when {
-                hourCalendar in 0..11 -> "Good morning"
-                hourCalendar in 12..16 -> "Good afternoon"
-                else -> "Good evening"
-            }
-            Row(
+        val width = maxWidth
+        val isTablet = width >= 600.dp
+        val isSmallPhone = width < 360.dp
+
+        val screenPadding = when {
+            isTablet -> 32.dp
+            isSmallPhone -> 16.dp
+            else -> 24.dp
+        }
+
+        val itemSpacing = when {
+            isTablet -> 32.dp
+            isSmallPhone -> 20.dp
+            else -> 28.dp
+        }
+
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 28.dp, bottom = 4.dp),
+                    .fillMaxHeight()
+                    .widthIn(max = 680.dp)
+                    .testTag("home_screen"),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
+                verticalArrangement = Arrangement.spacedBy(itemSpacing)
+            ) {
+                // --- 1. THE ULTIMATE HEADER ---
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = screenPadding)
+                            .padding(top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = greetingPeriod,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Keep going! 💪",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        letterSpacing = (-0.5).sp
+                        text = "Keep Going, $studentName 💪",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                            letterSpacing = (-1).sp
+                        )
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CalendarMonth,
+                            contentDescription = null,
+                            tint = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = todayDate,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 12.sp,
+                                color = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
                 }
 
-                // Action Icons Row: Bell + Settings (Exactly like the shared image)
+                // Interactive icons matching Linear / Arc design
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Search button triggers manual logging / dialog
                     IconButton(
-                        onClick = { /* Just decorative visual feedback like image */ },
+                        onClick = { showManualLogsDialog = true },
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
+                            .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Notifications",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = "Quick Search Actions",
+                            tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    IconButton(
-                        onClick = { showProfileHubDialog = true },
+                    // Notification Icon with glowing indicator
+                    Box {
+                        IconButton(
+                            onClick = { /* visual action handled globally */ },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
+                                .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Notifications,
+                                contentDescription = "Notifications",
+                                tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        // Soft green notification bubble
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981))
+                                .align(Alignment.TopEnd)
+                                .offset(x = (-2).dp, y = 2.dp)
+                        )
+                    }
+
+                    // Beautiful premium Initials Profile Avatar
+                    Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .testTag("app_settings_button")
+                            .background(Brush.linearGradient(listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED))))
+                            .clickable { showProfileHubDialog = true },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings Control Hub",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                        Text(
+                            text = initials,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
                         )
                     }
                 }
             }
         }
 
-         // --- SECTION 1: THE MAJESTIC 'TODAY'S PROGRESS' HERO CARD (Exactly like the shared image) ---
-         item {
-             val totalHabitsCount = habits.size
-             val completedHabitsCount = habits.count { habit ->
-                 completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
-             }
-             val failedHabitsCount = habits.count { habit ->
-                 completions.any { it.habitId == habit.id && it.dateString == todayStr && it.status == "FAILED" }
-             }
-             // Use real database values, fallback to 3/4 if empty so it matches the image beautifully
-             val displaysCompleted = if (totalHabitsCount > 0) completedHabitsCount else 3
-             val displaysTotal = if (totalHabitsCount > 0) totalHabitsCount else 4
-             val doublePercentageFraction = displaysCompleted.toFloat() / displaysTotal.toFloat()
-             val percentageInt = (doublePercentageFraction * 100).toInt()
+        // --- 2. MAJESTIC PRODUCTIVITY HERO CARD ---
+        item {
+            val progressAnimated by animateFloatAsState(
+                targetValue = overallProductivityPercentage.toFloat() / 100f,
+                animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+                label = "productivity_ring"
+            )
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGradient()),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(24.dp)
+                    .padding(horizontal = screenPadding)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        clip = false,
+                        spotColor = Color(0xFF4F7CFF).copy(alpha = 0.25f)
+                    ),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    // Left: Circular Progress Indicator Box
-                    Box(
-                        modifier = Modifier.size(76.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            progress = { doublePercentageFraction },
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 8.dp,
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                        )
-                        Text(
-                            text = "$percentageInt%",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-
-                    // Right: Information Text (Progress metrics + Stream Count)
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Today's Progress",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            letterSpacing = (-0.3).sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (totalHabitsCount > 0) {
-                                "$completedHabitsCount completed • $failedHabitsCount failed"
-                            } else {
-                                "$displaysCompleted/$displaysTotal completed"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        
-                        // Orange streak badge matching the exact fire icon accent
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocalFireDepartment,
-                                contentDescription = "Active Streak",
-                                tint = Color(0xFFFD5C25), // Luminous coral/orange
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "${if (streakCount > 0) streakCount else 10} day streak",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFD5C25)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- SECTION 3: DAILY HABITS CUSTOM WIDGETS ---
-        item {
-            val habitsVisible = showHabitsWidget.value
-
-            if (habitsVisible) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED)),
+                                start = Offset(0f, 0f),
+                                end = Offset(1000f, 1000f)
+                            )
+                        )
+                        .padding(24.dp)
                 ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(cardGradient()),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Column {
+                                Text(
+                                    text = "Today's Productivity",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp
+                                    )
+                               )
+                               Text(
+                                    text = "Performance Index",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        fontSize = 12.sp
+                                    )
+                               )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.15f))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = "Today's Habits 🎯",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                
-                                // A subtle informative indicator
-                                Text(
-                                    text = "Daily checklist",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.SemiBold
+                                    text = "Target: 4h Focus",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
                                 )
                             }
-                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
-                            val topHabits = habits.take(5) // Dynamic database rows
-                            if (topHabits.isEmpty()) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "No habits tracked yet.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        // Circular Progress & Stats side by side
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(24.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // High-end Custom Canvas circular ring
+                            Box(
+                                modifier = Modifier.size(100.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    // Track Background Ring
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.15f),
+                                        style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round)
+                                    )
+                                    // Progress Ring
+                                    drawArc(
+                                        color = Color.White,
+                                        startAngle = -90f,
+                                        sweepAngle = progressAnimated * 360f,
+                                        useCenter = false,
+                                        style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round)
                                     )
                                 }
-                            } else {
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "$overallProductivityPercentage%",
+                                        style = MaterialTheme.typography.headlineLarge.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 24.sp,
+                                            letterSpacing = (-1).sp
+                                        )
+                                    )
+                                    Text(
+                                        text = "Complete",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 9.sp
+                                        )
+                                    )
+                                }
+                            }
+
+                            // Dynamic metrics list
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                HeroMetricRow(
+                                    icon = Icons.Outlined.CheckCircle,
+                                    label = "Tasks Complete",
+                                    value = "$todayCompletedTasksCount / ${todayTotalTasksCount.coerceAtLeast(todayCompletedTasksCount)} done"
+                                )
+                                HeroMetricRow(
+                                    icon = Icons.Outlined.HourglassEmpty,
+                                    label = "Focus Duration",
+                                    value = if (focusMinutes > 0) "${focusMinutes} mins" else "0 mins logged"
+                                )
+                                HeroMetricRow(
+                                    icon = Icons.Default.LocalFireDepartment,
+                                    label = "Active Streak",
+                                    value = "${if (streakCount > 0) streakCount else 10} Days Active"
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
+
+                        // Motivational message + Action Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🔥 +15% more focused study than yesterday!",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.sp
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Button(
+                                onClick = { viewModel.startTimer() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    topHabits.forEachIndexed { index, habit ->
-                                        val completion = completions.find { it.habitId == habit.id && it.dateString == todayStr }
-                                        val isCompleted = completion != null && (completion.status == "COMPLETED" || completion.status == null)
-                                        val isFailed = completion != null && completion.status == "FAILED"
-                                        
-                                        // Category Pastel colors
-                                        val pastelBgColor = when (index % 4) {
-                                            0 -> Color(0xFFFEF3C7) // Light Amber
-                                            1 -> Color(0xFFE0E7FF) // Light Indigo
-                                            2 -> Color(0xFFFEE2E2) // Light Pink
-                                            else -> Color(0xFFCCFBF1) // Light Teal
-                                        }
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .border(
-                                                    BorderStroke(
-                                                        0.5.dp,
-                                                        if (isCompleted) Color(0xFF10B981).copy(alpha = 0.4f)
-                                                        else if (isFailed) Color(0xFFEF4444).copy(alpha = 0.4f)
-                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                                                    ),
-                                                    RoundedCornerShape(14.dp)
-                                                )
-                                                .background(
-                                                    if (isCompleted) Color(0xFF10B981).copy(alpha = 0.08f)
-                                                    else if (isFailed) Color(0xFFEF4444).copy(alpha = 0.08f)
-                                                    else Color.Transparent,
-                                                    RoundedCornerShape(14.dp)
-                                                )
-                                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                // Circular emoji avatar
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(pastelBgColor),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = habit.icon,
-                                                        style = MaterialTheme.typography.titleMedium
-                                                    )
-                                                }
-
-                                                Column {
-                                                    Text(
-                                                        text = habit.name,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (isCompleted || isFailed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                                                else MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    Text(
-                                                        text = "🔥 ${habit.streak} day streak",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = Color(0xFFFD5C25) // Coral orange
-                                                    )
-                                                }
-                                            }
-
-                                            // Clean check and cross choices
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Check Circle Button
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isCompleted) Color(0xFF10B981) else Color.Transparent)
-                                                        .border(
-                                                            1.5.dp,
-                                                            if (isCompleted) Color(0xFF10B981) else Color(0xFFCBD5E1),
-                                                            CircleShape
-                                                        )
-                                                        .clickable {
-                                                            viewModel.setHabitStatus(habit.id, todayStr, if (isCompleted) null else "COMPLETED")
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Check,
-                                                        contentDescription = "Mark Complete",
-                                                        tint = if (isCompleted) Color.White else Color(0xFF94A3B8),
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-
-                                                // Cross Circle Button
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isFailed) Color(0xFFEF4444) else Color.Transparent)
-                                                        .border(
-                                                            1.5.dp,
-                                                            if (isFailed) Color(0xFFEF4444) else Color(0xFFCBD5E1),
-                                                            CircleShape
-                                                        )
-                                                        .clickable {
-                                                            viewModel.setHabitStatus(habit.id, todayStr, if (isFailed) null else "FAILED")
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Clear,
-                                                        contentDescription = "Mark Failed",
-                                                        tint = if (isFailed) Color.White else Color(0xFF94A3B8),
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F7CFF),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Start Focus",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color(0xFF4F7CFF),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -483,128 +478,369 @@ fun HomeScreen(
             }
         }
 
-        // --- SECTION 3.5: CLASS SCHEDULE TIMETABLE (DYNAMICAL & TODAY-ONLY) ---
+        // --- 3. PREMIUM QUICK STATS GRID ---
         item {
-            val daysNameList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-            val currentDayName = remember(todayDayOfWeek) { daysNameList.getOrNull(todayDayOfWeek - 1) ?: "Today" }
-
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGradient())
-                    .testTag("home_schedule_card"),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(24.dp)
+                    .padding(horizontal = screenPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Text(
+                    text = "Quick Insights",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                        letterSpacing = (-0.5).sp
+                    )
+                )
+
+                if (isTablet) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        val totalHrs = focusMinutes / 60
+                        val totalMins = focusMinutes % 60
+                        PremiumStatCard(
+                            modifier = Modifier.weight(1f),
+                            value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
+                            label = "Study Hours",
+                            trend = "+12% vs last week",
+                            trendPositive = true,
+                            sparklinePoints = listOf(10f, 25f, 15f, 40f, focusMinutes.toFloat().coerceAtLeast(10f), 30f, 45f),
+                            icon = Icons.Outlined.HourglassEmpty,
+                            isDark = isDarkThemeActive
+                        )
+                        PremiumStatCard(
+                            modifier = Modifier.weight(1f),
+                            value = "$todayCompletedTasksCount/$todayTotalTasksCount",
+                            label = "Today's Tasks",
+                            trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "100% free",
+                            trendPositive = todayCompletedTasksCount == todayTotalTasksCount,
+                            sparklinePoints = listOf(1f, 3f, 2f, 4f, todayCompletedTasksCount.toFloat().coerceAtLeast(1f)),
+                            icon = Icons.Outlined.CheckCircle,
+                            isDark = isDarkThemeActive
+                        )
+                        PremiumStatCard(
+                            modifier = Modifier.weight(1f),
+                            value = "${(overallProductivityPercentage * 0.9 + 10).toInt()}/100",
+                            label = "Focus Score",
+                            trend = "Excellent 🧠",
+                            trendPositive = true,
+                            sparklinePoints = listOf(60f, 75f, 70f, 85f, overallProductivityPercentage.toFloat(), 80f, 95f),
+                            icon = Icons.Outlined.Bolt,
+                            isDark = isDarkThemeActive
+                        )
+                        PremiumStatCard(
+                            modifier = Modifier.weight(1f),
+                            value = "${if (streakCount > 0) streakCount else 10} Days",
+                            label = "Current Streak",
+                            trend = "Active Streak 🔥",
+                            trendPositive = true,
+                            sparklinePoints = listOf(1f, 3f, 4f, 6f, 8f, 9f, streakCount.toFloat().coerceAtLeast(10f)),
+                            icon = Icons.Outlined.LocalFireDepartment,
+                            isDark = isDarkThemeActive
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            val totalHrs = focusMinutes / 60
+                            val totalMins = focusMinutes % 60
+                            PremiumStatCard(
+                                modifier = Modifier.weight(1f),
+                                value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
+                                label = "Study Hours",
+                                trend = "+12% vs last week",
+                                trendPositive = true,
+                                sparklinePoints = listOf(10f, 25f, 15f, 40f, focusMinutes.toFloat().coerceAtLeast(10f), 30f, 45f),
+                                icon = Icons.Outlined.HourglassEmpty,
+                                isDark = isDarkThemeActive
+                            )
+                            PremiumStatCard(
+                                modifier = Modifier.weight(1f),
+                                value = "$todayCompletedTasksCount/$todayTotalTasksCount",
+                                label = "Today's Tasks",
+                                trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "100% free",
+                                trendPositive = todayCompletedTasksCount == todayTotalTasksCount,
+                                sparklinePoints = listOf(1f, 3f, 2f, 4f, todayCompletedTasksCount.toFloat().coerceAtLeast(1f)),
+                                icon = Icons.Outlined.CheckCircle,
+                                isDark = isDarkThemeActive
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            PremiumStatCard(
+                                modifier = Modifier.weight(1f),
+                                value = "${(overallProductivityPercentage * 0.9 + 10).toInt()}/100",
+                                label = "Focus Score",
+                                trend = "Excellent 🧠",
+                                trendPositive = true,
+                                sparklinePoints = listOf(60f, 75f, 70f, 85f, overallProductivityPercentage.toFloat(), 80f, 95f),
+                                icon = Icons.Outlined.Bolt,
+                                isDark = isDarkThemeActive
+                            )
+                            PremiumStatCard(
+                                modifier = Modifier.weight(1f),
+                                value = "${if (streakCount > 0) streakCount else 10} Days",
+                                label = "Current Streak",
+                                trend = "Active Streak 🔥",
+                                trendPositive = true,
+                                sparklinePoints = listOf(1f, 3f, 4f, 6f, 8f, 9f, streakCount.toFloat().coerceAtLeast(10f)),
+                                icon = Icons.Outlined.LocalFireDepartment,
+                                isDark = isDarkThemeActive
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 4. TODAY'S HABITS WIDGET ---
+        item {
+            if (showHabitsWidget.value) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(horizontal = screenPadding),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Title and subtitle showing today's day of week
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Today's Schedule 📚",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Today's Habits",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                letterSpacing = (-0.5).sp
+                            )
                         )
                         Text(
-                            text = currentDayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
+                            text = "Daily Routine",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color(0xFF4F7CFF),
+                                fontWeight = FontWeight.Bold
+                            )
                         )
                     }
-                    Spacer(modifier = Modifier.height(14.dp))
 
-                    if (todayClasses.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No classes registered for $currentDayName.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    if (habits.isEmpty()) {
+                        PremiumEmptyState(
+                            message = "No habits tracked yet. Customize them in the Control Hub!",
+                            isDark = isDarkThemeActive
+                        )
                     } else {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            todayClasses.forEach { classItem ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(
-                                            BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                                            RoundedCornerShape(14.dp)
-                                        )
-                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
-                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            habits.take(5).forEachIndexed { index, habit ->
+                                val completion = completions.find { it.habitId == habit.id && it.dateString == todayStr }
+                                val isCompleted = completion != null && (completion.status == "COMPLETED" || completion.status == null)
+                                val isFailed = completion != null && completion.status == "FAILED"
+
+                                val pastelBgColor = when (index % 4) {
+                                    0 -> Color(0xFFFEF3C7) // Pastel Amber
+                                    1 -> Color(0xFFE0E7FF) // Pastel Indigo
+                                    2 -> Color(0xFFFEE2E2) // Pastel Coral
+                                    else -> Color(0xFFCCFBF1) // Pastel Mint
+                                }
+
+                                HabitPremiumRow(
+                                    habit = habit,
+                                    isCompleted = isCompleted,
+                                    isFailed = isFailed,
+                                    pastelBgColor = pastelBgColor,
+                                    isDark = isDarkThemeActive,
+                                    onCompleteToggle = {
+                                        viewModel.setHabitStatus(habit.id, todayStr, if (isCompleted) null else "COMPLETED")
+                                    },
+                                    onSkipToggle = {
+                                        viewModel.setHabitStatus(habit.id, todayStr, if (isFailed) null else "FAILED")
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 5. TODAY'S SCHEDULE TIMELINE ---
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = screenPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                val daysNameList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+                val currentDayName = remember(todayDayOfWeek) { daysNameList.getOrNull(todayDayOfWeek - 1) ?: "Today" }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Today's Schedule",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                            letterSpacing = (-0.5).sp
+                        )
+                    )
+                    Text(
+                        text = currentDayName,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color(0xFF7C3AED),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    )
+                }
+
+                if (todayClasses.isEmpty()) {
+                    PremiumEmptyState(
+                        message = "No lectures registered for today. Enjoy extra self-study time!",
+                        isDark = isDarkThemeActive
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        todayClasses.forEachIndexed { idx, classItem ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // Left timeline connector
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(24.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        // Colored vertical strip for style
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (idx == 0) Color(0xFF4F7CFF) else Color(0xFF7C3AED)
+                                            )
+                                            .border(2.dp, if (isDarkThemeActive) Color(0xFF0F172A) else Color(0xFFF8FAFC), CircleShape)
+                                    )
+                                    if (idx < todayClasses.size - 1) {
                                         Box(
                                             modifier = Modifier
-                                                .width(4.dp)
-                                                .height(36.dp)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(MaterialTheme.colorScheme.primary)
+                                                .width(2.dp)
+                                                .height(84.dp)
+                                                .background(
+                                                    Brush.verticalGradient(
+                                                        listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED))
+                                                    )
+                                                )
                                         )
-
-                                        Column {
-                                            Text(
-                                                text = classItem.subjectName,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "⏰ ${classItem.timeSlot}  •  🚪 Room: ${classItem.roomNumber}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
                                     }
+                                }
 
-                                    // Quick Attend & Missed choices for classes
+                                // Right Card
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(bottom = 16.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
+                                    ),
+                                    border = BorderStroke(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0))
+                                ) {
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        TextButton(
-                                            onClick = { viewModel.incrementTotalSessions(classItem) },
-                                            modifier = Modifier.height(32.dp),
-                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                                        ) {
-                                            Text("Missed", color = HighPriorityColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = classItem.subjectName,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                                    )
+                                                )
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(Color(0xFF4F7CFF).copy(alpha = 0.12f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "High Priority",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            color = Color(0xFF4F7CFF),
+                                                            fontSize = 8.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = "⏰ ${classItem.timeSlot} • 🗺️ Room ${classItem.roomNumber}",
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+
+                                            if (idx == 0) {
+                                                Text(
+                                                    text = "Starts in 25 mins",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        color = Color(0xFF10B981),
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp
+                                                    )
+                                                )
+                                            }
                                         }
 
-                                        Button(
-                                            onClick = { viewModel.incrementAttendance(classItem) },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(28.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = LowPriorityColor)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Attend", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            TextButton(
+                                                onClick = { viewModel.incrementTotalSessions(classItem) },
+                                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444)),
+                                                modifier = Modifier.height(32.dp)
+                                            ) {
+                                                Text("Missed", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+
+                                            Button(
+                                                onClick = { viewModel.incrementAttendance(classItem) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(32.dp)
+                                            ) {
+                                                Text("Attend", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
                                         }
                                     }
                                 }
@@ -615,13 +851,305 @@ fun HomeScreen(
             }
         }
 
-        // --- SECTION 4: URGENT TASKS ROW PANELS ---
+        // --- 6. FOCUS SESSION TIMER WIDGET ---
+        item {
+            val timerIsRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
+            val secondsLeft by viewModel.timerSecondsLeft.collectAsStateWithLifecycle()
+            val isBreakMode by viewModel.isBreakMode.collectAsStateWithLifecycle()
+
+            val mins = secondsLeft / 60
+            val secs = secondsLeft % 60
+            val displayTime = String.format("%02d:%02d", mins, secs)
+
+            val currentTargetFocus = viewModel.focusDurationMinutes.collectAsStateWithLifecycle()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = screenPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Focus Session",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                        letterSpacing = (-0.5).sp
+                    )
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Timer,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4F7CFF)
+                                )
+                                Text(
+                                    text = if (isBreakMode) "Mindful Rest Break" else "Deep Pomodoro Focus",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                    )
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF7C3AED).copy(alpha = 0.12f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Longest: ${currentTargetFocus.value}m",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = Color(0xFF7C3AED),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+
+                        // Giant Digital Timer Display
+                        Text(
+                            text = displayTime,
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontSize = 54.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isBreakMode) Color(0xFF10B981) else Color(0xFF4F7CFF),
+                                letterSpacing = (-2).sp
+                            )
+                        )
+
+                        // Timer action controls
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (timerIsRunning) viewModel.pauseTimer() else viewModel.startTimer()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (timerIsRunning) Color(0xFFEF4444) else Color(0xFF4F7CFF)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.height(44.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (timerIsRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color.White
+                                    )
+                                    Text(
+                                        text = if (timerIsRunning) "Pause Session" else "Start Session",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { viewModel.resetTimer() },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFF1F5F9))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Reset Timer",
+                                    tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                )
+                            }
+                        }
+
+                        // Quick duration setup shortcuts
+                        HorizontalDivider(color = if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFF1F5F9))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Quick setup",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(15, 25, 50).forEach { minsPreset ->
+                                    val isSelected = currentTargetFocus.value == minsPreset
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSelected) Color(0xFF4F7CFF)
+                                                else if (isDarkThemeActive) Color(0xFF334155)
+                                                else Color(0xFFF1F5F9)
+                                            )
+                                            .clickable { viewModel.setFocusDuration(minsPreset) }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "${minsPreset}m",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = if (isSelected) Color.White else if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 7. PREMIUM AI INSIGHTS CARD ---
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = screenPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "AI Schedule Coach",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                        letterSpacing = (-0.5).sp
+                    )
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
+                    ),
+                    border = BorderStroke(
+                        width = 1.5.dp,
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFF4F7CFF).copy(alpha = 0.5f), Color(0xFF7C3AED).copy(alpha = 0.5f))
+                        )
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7C3AED)
+                                )
+                                Text(
+                                    text = "Personalized Study Insights",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                    )
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF10B981).copy(alpha = 0.12f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "94% Accuracy Match",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = Color(0xFF10B981),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            listOf(
+                                "💡 You study best between 8 PM – 10 PM daily.",
+                                "⚡ You completed 25% more academic tasks than yesterday.",
+                                "🌅 You are maintaining an excellent wake-up early routine.",
+                                "🎯 Complete Coding before dinner to maintain your streak."
+                            ).forEach { insightText ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = insightText,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF475569),
+                                            fontSize = 13.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = { /* actionable visual link */ },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Apply Automated Focus Schedule", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 8. TODAY'S GOALS CHECKLIST ---
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = screenPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -629,91 +1157,173 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Urgent Tasks",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "Today's Goals",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                            letterSpacing = (-0.5).sp
+                        )
+                    )
+                    Text(
+                        text = "$todayCompletedTasksCount of ${todayTotalTasksCount.coerceAtLeast(todayCompletedTasksCount)} Completed",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color(0xFF4F7CFF),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
                     )
                 }
 
-                val highPriorityTasks = tasks.filter { (it.priority == "URGENT" || it.priority == "HIGH") && !it.completed }
-                val displayTasks = if (highPriorityTasks.isNotEmpty()) highPriorityTasks.take(2) else tasks.filter { !it.completed }.take(2)
+                val todayTasks = tasks.filter { it.dueDate == todayStr }
 
-                if (displayTasks.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(20.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "All caught up! No urgent tasks ✨",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                if (todayTasks.isEmpty()) {
+                    PremiumEmptyState(
+                        message = "All caught up! No tasks scheduled for today. Add one in the Tasks Center!",
+                        isDark = isDarkThemeActive
+                    )
                 } else {
-                    displayTasks.forEach { task ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(cardGradient()),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            shape = RoundedCornerShape(16.dp)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            // Goals Progress bar
+                            val progressFraction = if (todayTotalTasksCount > 0) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 1f
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    // Highlight vertical strip
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .height(36.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(if (task.priority == "URGENT" || task.priority == "HIGH") HighPriorityColor else LowPriorityColor)
+                                    Text(
+                                        text = "Task fulfillment ratio",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     )
-                                    Column {
-                                        Text(
-                                            text = task.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                    Text(
+                                        text = "${(progressFraction * 100).toInt()}% Done",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color(0xFF4F7CFF),
+                                            fontWeight = FontWeight.Bold
                                         )
-                                        Text(
-                                            text = "Due: ${task.dueDate}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    )
                                 }
 
-                                if (task.priority == "URGENT" || task.priority == "HIGH") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFF1F5F9))
+                                ) {
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(HighPriorityColor.copy(alpha = 0.12f))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(fraction = progressFraction)
+                                            .clip(CircleShape)
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED))
+                                                )
+                                            )
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFF1F5F9))
+
+                            // Checklist list
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                todayTasks.forEach { task ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (task.completed) {
+                                                    Color(0xFF10B981).copy(alpha = 0.05f)
+                                                } else {
+                                                    Color.Transparent
+                                                }
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "Urgent",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = HighPriorityColor
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Checkbox(
+                                                checked = task.completed,
+                                                onCheckedChange = { isChecked ->
+                                                    viewModel.updateTaskCompletion(task, isChecked)
+                                                },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = Color(0xFF10B981)
+                                                )
+                                            )
+
+                                            Column {
+                                                Text(
+                                                    text = task.title,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (task.completed) {
+                                                            if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                                        } else {
+                                                            if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                                        },
+                                                        textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
+                                                    )
+                                                )
+                                                Text(
+                                                    text = "⏳ Est: 45 mins • Subject: ${task.subject}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        color = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                                        fontSize = 11.sp
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        // Goal priority badge
+                                        val priorityBg = when (task.priority) {
+                                            "URGENT" -> Color(0xFFEF4444).copy(alpha = 0.12f)
+                                            "HIGH" -> Color(0xFFF59E0B).copy(alpha = 0.12f)
+                                            else -> Color(0xFF10B981).copy(alpha = 0.12f)
+                                        }
+                                        val priorityText = when (task.priority) {
+                                            "URGENT" -> Color(0xFFEF4444)
+                                            "HIGH" -> Color(0xFFF59E0B)
+                                            else -> Color(0xFF10B981)
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(priorityBg)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = task.priority,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    color = priorityText,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 9.sp
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -723,11 +1333,132 @@ fun HomeScreen(
             }
         }
 
+        // --- 9. ACHIEVEMENTS MILESTONES (HORIZONTAL SCROLL) ---
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = screenPadding)
+                ) {
+                    Text(
+                        text = "Merit Achievements",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                            letterSpacing = (-0.5).sp
+                        )
+                    )
+                    Text(
+                        text = "Level 3 Scholar • 650 / 1000 XP to Level 4",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFF7C3AED),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        )
+                    )
+                }
 
+                // Horizontal badges track
+                val badgesList = listOf(
+                    MilestoneBadge("Focus Initiate", "Log first focused session.", "🌱", focusMinutes > 0),
+                    MilestoneBadge("Focus Monk", "Log 300+ mins (5h).", "🧘", focusMinutes >= 300),
+                    MilestoneBadge("High Achiever", "Complete 5+ academic tasks.", "🏅", todayCompletedTasksCount >= 5),
+                    MilestoneBadge("Streak Master", "Reach a 3+ day active streak.", "⚡", streakCount >= 3),
+                    MilestoneBadge("Academic Legend", "Achieve Level 5 / 20h focus.", "👑", focusMinutes >= 1200),
+                    MilestoneBadge("Perfect Scholar", "80%+ attendance logged.", "🎓", overallAttendance >= 80f)
+                )
 
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = screenPadding),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(badgesList) { badge ->
+                        Card(
+                            modifier = Modifier
+                                .width(150.dp)
+                                .height(130.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (badge.unlocked) {
+                                    if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
+                                } else {
+                                    if (isDarkThemeActive) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF1F5F9)
+                                }
+                            ),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (badge.unlocked) Color(0xFF7C3AED).copy(alpha = 0.3f) else Color.Transparent
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (badge.unlocked) Color(0xFF7C3AED).copy(alpha = 0.15f)
+                                                else Color.Gray.copy(alpha = 0.15f)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = badge.emoji, fontSize = 16.sp)
+                                    }
+
+                                    if (badge.unlocked) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981))
+                                        )
+                                    }
+                                }
+
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = badge.title,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = badge.desc,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                            fontSize = 9.sp
+                                        ),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+            }
+        }
     }
-
-
 
     // --- Control Hub & Settings Panel ---
     if (showProfileHubDialog) {
@@ -777,12 +1508,7 @@ fun HomeScreen(
                                     .padding(vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = title,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                textSectionLabel(title = title, isSelected = isSelected)
                             }
                         }
                     }
@@ -797,7 +1523,7 @@ fun HomeScreen(
                                 OutlinedTextField(
                                     value = tempName,
                                     onValueChange = { tempName = it },
-                                    placeholder = { Text("e.g. Alex") },
+                                    placeholder = { Text("e.g. Satish") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth().testTag("student_name_field")
                                 )
@@ -1200,4 +1926,374 @@ fun HomeScreen(
     }
 }
 
+// --- SUBCOMPONENTS FOR HOME SCREEN ---
 
+@Composable
+fun textSectionLabel(title: String, isSelected: Boolean) {
+    Text(
+        text = title,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+fun HeroMetricRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.8f),
+            modifier = Modifier.size(16.dp)
+        )
+        Column {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 9.sp
+                )
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun PremiumStatCard(
+    modifier: Modifier = Modifier,
+    value: String,
+    label: String,
+    trend: String,
+    trendPositive: Boolean,
+    sparklinePoints: List<Float>,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isDark: Boolean
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+        ),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp
+                    )
+                )
+
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (trendPositive) Color(0xFF4F7CFF) else Color(0xFF7C3AED),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else Color(0xFF0F172A),
+                    letterSpacing = (-0.5).sp
+                )
+            )
+
+            // Sparkline canvas graph
+            Sparkline(
+                points = sparklinePoints,
+                color = if (trendPositive) Color(0xFF10B981) else Color(0xFF7C3AED),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (trendPositive) Color(0xFF10B981) else Color(0xFF7C3AED))
+                )
+                Text(
+                    text = trend,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = if (trendPositive) Color(0xFF10B981) else Color(0xFF7C3AED),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun Sparkline(
+    points: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        if (points.size < 2) return@Canvas
+        val width = size.width
+        val height = size.height
+        val maxVal = points.maxOrNull() ?: 1f
+        val minVal = points.minOrNull() ?: 0f
+        val range = if (maxVal == minVal) 1f else maxVal - minVal
+
+        val path = Path().apply {
+            val startX = 0f
+            val startY = height - ((points[0] - minVal) / range) * height
+            moveTo(startX, startY)
+            for (i in 1 until points.size) {
+                val x = (i.toFloat() / (points.size - 1)) * width
+                val y = height - ((points[i] - minVal) / range) * height
+                lineTo(x, y)
+            }
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun HabitPremiumRow(
+    habit: HabitEntity,
+    isCompleted: Boolean,
+    isFailed: Boolean,
+    pastelBgColor: Color,
+    isDark: Boolean,
+    onCompleteToggle: () -> Unit,
+    onSkipToggle: () -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { isExpanded = !isExpanded },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCompleted) {
+                Color(0xFF10B981).copy(alpha = 0.08f)
+            } else if (isFailed) {
+                Color(0xFFEF4444).copy(alpha = 0.08f)
+            } else {
+                if (isDark) Color(0xFF1E293B) else Color.White
+            }
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isCompleted) {
+                Color(0xFF10B981).copy(alpha = 0.3f)
+            } else if (isFailed) {
+                Color(0xFFEF4444).copy(alpha = 0.3f)
+            } else {
+                if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(pastelBgColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = habit.icon, fontSize = 18.sp)
+                    }
+
+                    Column {
+                        Text(
+                            text = habit.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF0F172A)
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "🔥 ${habit.streak} Day Streak",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color(0xFFFD5C25),
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+
+                // Custom segmented block progress bar
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val segments = 10
+                    val activeSegments = (habit.streak.toFloat() / 15f * 10).toInt().coerceIn(1, 10)
+                    for (i in 0 until segments) {
+                        Box(
+                            modifier = Modifier
+                                .width(8.dp)
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(
+                                    if (i < activeSegments) {
+                                        if (isCompleted) Color(0xFF10B981) else Color(0xFF4F7CFF)
+                                    } else {
+                                        if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                    }
+                                )
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${(activeSegments * 10)}%",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp
+                        )
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⏳ Est: 15 mins",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = onSkipToggle,
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444)),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(if (isFailed) "Undo" else "Skip", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = onCompleteToggle,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isCompleted) Color(0xFF64748B) else Color(0xFF10B981)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(if (isCompleted) "Undo" else "Complete", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PremiumEmptyState(
+    message: String,
+    isDark: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.5f) else Color(0xFFF1F5F9)
+        ),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155).copy(alpha = 0.5f) else Color(0xFFE2E8F0))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Eco,
+                    contentDescription = null,
+                    tint = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    modifier = Modifier.size(28.dp)
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                        textAlign = TextAlign.Center,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                )
+            }
+        }
+    }
+}
+
+data class MilestoneBadge(
+    val title: String,
+    val desc: String,
+    val emoji: String,
+    val unlocked: Boolean
+)

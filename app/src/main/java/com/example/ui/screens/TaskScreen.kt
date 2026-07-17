@@ -82,13 +82,19 @@ fun TaskScreen(
         },
         containerColor = Color.Transparent
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 680.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             // --- TOP SWITCHER & FILTERS ROW ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -278,6 +284,7 @@ fun TaskScreen(
                     }
                 }
             }
+        }
         }
     }
 

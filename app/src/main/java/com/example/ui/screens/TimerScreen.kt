@@ -70,15 +70,20 @@ fun TimerScreen(
 
     val activePrimaryColor = if (isBreakMode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-            .testTag("timer_screen"),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = 680.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                .testTag("timer_screen"),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         // --- PHASE STATE DECAL ---
         Card(
             modifier = Modifier
@@ -520,6 +525,7 @@ fun TimerScreen(
                 }
             }
         }
+    }
     }
 
     if (showCustomFocusDialog) {

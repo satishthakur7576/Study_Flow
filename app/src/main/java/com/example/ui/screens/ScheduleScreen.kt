@@ -71,13 +71,19 @@ fun ScheduleScreen(
         },
         containerColor = Color.Transparent
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 680.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // --- TOP HEADER ---
             Column {
                 Text(
@@ -203,6 +209,7 @@ fun ScheduleScreen(
                     }
                 }
             }
+        }
         }
     }
 

@@ -66,13 +66,19 @@ fun HabitScreen(
         },
         containerColor = Color.Transparent
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 680.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // --- TOP DESCRIPTION ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -148,6 +154,7 @@ fun HabitScreen(
                     }
                 }
             }
+        }
         }
     }
 

@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -310,93 +313,148 @@ fun MainAppLayout(viewModel: StudyViewModel) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
-                NavigationBar(
-                    modifier = Modifier.testTag("bottom_nav_bar"),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    AppTab.values().forEach { tab ->
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = { selectedTab = tab },
-                            icon = { Icon(imageVector = tab.icon, contentDescription = tab.title) },
-                            label = { AdaptiveTabLabel(text = tab.title) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                            ),
-                            modifier = Modifier.testTag("nav_item_${tab.name.lowercase()}")
-                        )
+                    Card(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                            .height(66.dp)
+                            .shadow(16.dp, shape = RoundedCornerShape(24.dp), clip = false),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AppTab.values().forEach { tab ->
+                                val isSelected = selectedTab == tab
+                                val activeColor = MaterialTheme.colorScheme.primary
+                                val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                
+                                val animatedScale by animateFloatAsState(
+                                    targetValue = if (isSelected) 1.15f else 1.0f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                    label = "tab_scale"
+                                )
+                                
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable { selectedTab = tab }
+                                        .padding(vertical = 4.dp)
+                                        .testTag("nav_item_${tab.name.lowercase()}"),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.title,
+                                        tint = if (isSelected) activeColor else inactiveColor,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .scale(animatedScale)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = tab.title,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                            color = if (isSelected) activeColor else inactiveColor
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             },
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = when (selectedTab) {
-                                AppTab.HOME -> "StudyFlow Pro"
-                                AppTab.ANALYTICS -> "Analytics & Progress"
-                                AppTab.TASKS -> "Task Center"
-                                AppTab.TIMER -> "Pomodoro Focus"
-                                AppTab.HABITS -> "Habits Tracker"
-                                AppTab.SCHEDULE -> "Classes Timetable"
-                            },
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = (-0.5).sp,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onBackground
+                if (selectedTab != AppTab.HOME) {
+                    CenterAlignedTopAppBar(
+                        title = {
+                            Text(
+                                text = when (selectedTab) {
+                                    AppTab.HOME -> "StudyFlow Pro"
+                                    AppTab.ANALYTICS -> "Analytics & Progress"
+                                    AppTab.TASKS -> "Task Center"
+                                    AppTab.TIMER -> "Pomodoro Focus"
+                                    AppTab.HABITS -> "Habits Tracker"
+                                    AppTab.SCHEDULE -> "Classes Timetable"
+                                },
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = (-0.5).sp,
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = "Sidebar Menu",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        },
+                        actions = {
+                            // Sparkles: AI Coach assistant trigger
+                            IconButton(onClick = { showAiAssistant = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.TipsAndUpdates,
+                                    contentDescription = "AI Companion Guide",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            // Search: Command Palette trigger
+                            IconButton(onClick = { showCommandPalette = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Command Palette",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // Bell: Notifications trigger
+                            IconButton(onClick = { showNotifications = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "System Notifications",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background
                         )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                imageVector = Icons.Default.Menu,
-                                contentDescription = "Sidebar Menu",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    },
-                    actions = {
-                        // Sparkles: AI Coach assistant trigger
-                        IconButton(onClick = { showAiAssistant = true }) {
-                            Icon(
-                                imageVector = Icons.Default.TipsAndUpdates,
-                                contentDescription = "AI Companion Guide",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // Search: Command Palette trigger
-                        IconButton(onClick = { showCommandPalette = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Command Palette",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        // Bell: Notifications trigger
-                        IconButton(onClick = { showNotifications = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "System Notifications",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
                     )
-                )
+                }
             },
             contentWindowInsets = WindowInsets.safeDrawing
         ) { innerPadding ->
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(
+                        top = innerPadding.calculateTopPadding(),
+                        bottom = if (selectedTab == AppTab.HOME) 0.dp else innerPadding.calculateBottomPadding()
+                    ),
                 color = MaterialTheme.colorScheme.background
             ) {
                 when (selectedTab) {
