@@ -48,6 +48,15 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         _isDarkTheme.value = enabled
     }
 
+    // --- Customizable Weekly Study Goal (Hours) ---
+    private val _weeklyFocusGoalHours = MutableStateFlow(sharedPrefs.getInt("weekly_focus_goal", 10))
+    val weeklyFocusGoalHours: StateFlow<Int> = _weeklyFocusGoalHours.asStateFlow()
+
+    fun updateWeeklyFocusGoal(hours: Int) {
+        sharedPrefs.edit().putInt("weekly_focus_goal", hours).apply()
+        _weeklyFocusGoalHours.value = hours
+    }
+
     // --- Dynamic Date Tracking for Adaptive Resetting ---
     private val _todayDateString = MutableStateFlow(getTodayDateString())
     val todayDateString: StateFlow<String> = _todayDateString.asStateFlow()

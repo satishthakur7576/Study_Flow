@@ -47,6 +47,21 @@ fun AnalyticsScreen(
     val lifetimeStats by viewModel.lifetimeAnalytics.collectAsStateWithLifecycle()
     val dailyContributions by viewModel.dailyContributions.collectAsStateWithLifecycle()
     val isDarkThemeActive by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+    val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+    val habits by viewModel.habits.collectAsStateWithLifecycle()
+    val completions by viewModel.completions.collectAsStateWithLifecycle(emptyList())
+    val weeklyFocusGoalHours by viewModel.weeklyFocusGoalHours.collectAsStateWithLifecycle(10)
+    val focusRecords by viewModel.focusRecords.collectAsStateWithLifecycle(emptyList())
+
+    val todayDateString = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val completedHabitsCount = remember(completions, todayDateString) {
+        completions.count { it.dateString == todayDateString && (it.status == "COMPLETED" || it.status == null) }
+    }
+    val completedTasksCount = remember(tasks, todayDateString) {
+        tasks.count { it.completed && it.dueDate == todayDateString }
+    }
+
+    val dynamicColors = remember(activeTheme) { getDynamicColors(activeTheme) }
 
     var currentAnalyticsTab by remember { mutableStateOf(0) } // 0 = Focus, 1 = Tasks, 2 = Habits
     var showContributionExplanationDialog by remember { mutableStateOf(false) }
@@ -56,6 +71,78 @@ fun AnalyticsScreen(
         val day = cal.get(Calendar.DAY_OF_WEEK)
         if (day == Calendar.SUNDAY) 7 else day - 1
     }
+
+    val activeDaysSet = remember(completions, focusRecords, tasks) {
+        val compDates = completions.filter { it.status == "COMPLETED" || it.status == null }.map { it.dateString }
+        val focusDates = focusRecords.filter { it.durationMinutes > 0 }.map { it.dateString }
+        val taskDates = tasks.filter { it.completed }.map { it.dueDate }
+        (compDates + focusDates + taskDates).toSet()
+    }
+    val activeDaysCount = activeDaysSet.size
+
+    val streakStats = remember(activeDaysSet) {
+        if (activeDaysSet.isEmpty()) Pair(0, 0)
+        else {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val sortedDates = activeDaysSet.mapNotNull {
+                try { sdf.parse(it) } catch (e: Exception) { null }
+            }.sorted()
+            
+            if (sortedDates.isEmpty()) Pair(0, 0)
+            else {
+                var longestStreak = 0
+                var tempStreak = 0
+                
+                var currentStreak = 0
+                val curCal = Calendar.getInstance()
+                var checkDateStr = sdf.format(curCal.time)
+                if (activeDaysSet.contains(checkDateStr)) {
+                    currentStreak++
+                    curCal.add(Calendar.DAY_OF_YEAR, -1)
+                    checkDateStr = sdf.format(curCal.time)
+                    while (activeDaysSet.contains(checkDateStr)) {
+                        currentStreak++
+                        curCal.add(Calendar.DAY_OF_YEAR, -1)
+                        checkDateStr = sdf.format(curCal.time)
+                    }
+                } else {
+                    curCal.add(Calendar.DAY_OF_YEAR, -1)
+                    checkDateStr = sdf.format(curCal.time)
+                    while (activeDaysSet.contains(checkDateStr)) {
+                        currentStreak++
+                        curCal.add(Calendar.DAY_OF_YEAR, -1)
+                        checkDateStr = sdf.format(curCal.time)
+                    }
+                }
+                
+                var prevDate: java.util.Date? = null
+                sortedDates.forEach { date ->
+                    if (prevDate == null) {
+                        tempStreak = 1
+                    } else {
+                        val diffMs = date.time - prevDate!!.time
+                        val diffDays = diffMs / (1000 * 60 * 60 * 24)
+                        if (diffDays <= 1) {
+                            tempStreak++
+                        } else {
+                            if (tempStreak > longestStreak) {
+                                longestStreak = tempStreak
+                            }
+                            tempStreak = 1
+                        }
+                    }
+                    prevDate = date
+                }
+                if (tempStreak > longestStreak) {
+                    longestStreak = tempStreak
+                }
+                
+                Pair(currentStreak, maxOf(longestStreak, currentStreak))
+            }
+        }
+    }
+    val currentStreak = streakStats.first
+    val longestStreak = streakStats.second
 
     LazyColumn(
         modifier = modifier
@@ -111,7 +198,7 @@ fun AnalyticsScreen(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .then(
-                                        if (isActive) Modifier.background(FintrixOrangeGradient) else Modifier
+                                        if (isActive) Modifier.background(dynamicColors.gradientBrush) else Modifier
                                     )
                                     .clickable { currentAnalyticsTab = i }
                                     .padding(vertical = 8.dp),
@@ -144,9 +231,9 @@ fun AnalyticsScreen(
                     }
 
                     val activeBarColor = when (currentAnalyticsTab) {
-                        0 -> MaterialTheme.colorScheme.primary
+                        0 -> dynamicColors.primaryColor
                         1 -> MaterialTheme.colorScheme.secondary
-                        else -> MaterialTheme.colorScheme.primary
+                        else -> dynamicColors.primaryColor
                     }
 
                     val chartMax = when (currentAnalyticsTab) {
@@ -168,7 +255,380 @@ fun AnalyticsScreen(
             }
         }
 
-        // --- SECTION 2: LIFETIME PROGRESS CARD ---
+        // --- SECTION 1.5: INTERACTIVE TRACKING HUB ---
+        item {
+            WeeklyGoalProgressCard(
+                weeklyFocusHours = weeklyStats.focusHours.sum(),
+                weeklyGoalHours = weeklyFocusGoalHours,
+                onUpdateGoal = viewModel::updateWeeklyFocusGoal,
+                primaryColor = dynamicColors.primaryColor,
+                gradientBrush = dynamicColors.gradientBrush
+            )
+        }
+
+        item {
+            DailyAcademicMilestones(
+                todayFocusHours = weeklyStats.focusHours.getOrElse(todayDayOfWeek - 1) { 0f },
+                completedHabitsCount = completedHabitsCount,
+                completedTasksCount = completedTasksCount,
+                primaryColor = dynamicColors.primaryColor
+            )
+        }
+
+        item {
+            RecentFocusLogsCard(
+                focusRecords = focusRecords,
+                primaryColor = dynamicColors.primaryColor
+            )
+        }
+
+        // --- SECTION 2: REDESIGNED PREMIUM LIFETIME ANALYTICS ---
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Lifetime Analytics 🏆",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "An overview of your complete academic growth, consistency, and milestones.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 1. PRODUCTIVITY LEVEL & XP GLASS CARD
+        item {
+            val totalXp = remember(lifetimeStats) {
+                val taskXp = lifetimeStats.totalTasksCompleted * 15
+                val focusXp = lifetimeStats.totalFocusMinutes * 1
+                val habitXp = lifetimeStats.totalHabitCompletions * 10
+                val badgeXp = lifetimeStats.activeBadgesCount * 100
+                taskXp + focusXp + habitXp + badgeXp
+            }
+            val xpPerLevel = 250
+            val currentLevel = remember(totalXp) { 1 + totalXp / xpPerLevel }
+            val currentXpInLevel = remember(totalXp) { totalXp % xpPerLevel }
+            val levelProgress = remember(totalXp) { currentXpInLevel.toFloat() / xpPerLevel.toFloat() }
+            
+            val levelTitle = when {
+                currentLevel < 2 -> "Focus Novice 🌱"
+                currentLevel < 4 -> "Consistent Builder ⚡"
+                currentLevel < 6 -> "Academic Ranger ⚔️"
+                currentLevel < 8 -> "Productivity Master 🎯"
+                else -> "Focus Monk 👑"
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(cardGradient()),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Productivity Score & XP",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Complete objectives to earn XP and level up",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(dynamicColors.primaryColor.copy(alpha = 0.1f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "XP SYSTEM",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = dynamicColors.primaryColor
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        // Level Dial Circle
+                        Box(
+                            modifier = Modifier.size(110.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val animatedProgress by animateFloatAsState(
+                                targetValue = levelProgress.coerceIn(0f, 1f),
+                                animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+                                label = "xpProgress"
+                            )
+
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawArc(
+                                    color = dynamicColors.primaryColor.copy(alpha = 0.08f),
+                                    startAngle = -90f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = 10.dp.toPx(),
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                )
+                                drawArc(
+                                    brush = dynamicColors.gradientBrush,
+                                    startAngle = -90f,
+                                    sweepAngle = animatedProgress * 360f,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = 10.dp.toPx(),
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Lvl $currentLevel",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "$currentXpInLevel / $xpPerLevel XP",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // XP Breakdown Table
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = levelTitle,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = dynamicColors.primaryColor
+                            )
+                            
+                            val xpSources = listOf(
+                                "Focus Time" to "${lifetimeStats.totalFocusMinutes} XP",
+                                "Tasks Done" to "+${lifetimeStats.totalTasksCompleted * 15} XP",
+                                "Habits Logged" to "+${lifetimeStats.totalHabitCompletions * 10} XP",
+                                "Trophies Unlocked" to "+${lifetimeStats.activeBadgesCount * 100} XP"
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                xpSources.forEach { (source, xp) ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = source,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = xp,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. LIFETIME PROGRESS METRICS GRID
+        item {
+            val taskSuccessRate = remember(lifetimeStats) {
+                if (lifetimeStats.totalTasksCreated == 0) 100
+                else (lifetimeStats.totalTasksCompleted.toFloat() / lifetimeStats.totalTasksCreated.toFloat() * 100).toInt()
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Metric 1: Tasks Completed
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Tasks Completed",
+                        value = "${lifetimeStats.totalTasksCompleted}",
+                        subtext = "${lifetimeStats.totalTasksCompleted}/${lifetimeStats.totalTasksCreated} done",
+                        icon = Icons.Default.TaskAlt,
+                        iconColor = Color(0xFF3B82F6),
+                        progress = if (lifetimeStats.totalTasksCreated == 0) 0f else lifetimeStats.totalTasksCompleted.toFloat() / lifetimeStats.totalTasksCreated.toFloat()
+                    )
+
+                    // Metric 2: Focus Hours
+                    val totalH = lifetimeStats.totalFocusMinutes / 60
+                    val totalM = lifetimeStats.totalFocusMinutes % 60
+                    val focusDisplay = if (totalH > 0) "${totalH}h ${totalM}m" else "${totalM}m"
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Focus Hours",
+                        value = focusDisplay,
+                        subtext = "Total focused studying",
+                        icon = Icons.Default.HourglassEmpty,
+                        iconColor = Color(0xFFF59E0B),
+                        progress = (lifetimeStats.totalFocusMinutes / 300f).coerceIn(0f, 1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Metric 3: Active Days
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Active Days",
+                        value = "$activeDaysCount d",
+                        subtext = "Days with logged activity",
+                        icon = Icons.Default.CalendarToday,
+                        iconColor = Color(0xFF10B981),
+                        progress = (activeDaysCount / 30f).coerceIn(0f, 1f)
+                    )
+
+                    // Metric 4: Success Rate
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Success Rate",
+                        value = "$taskSuccessRate%",
+                        subtext = "Task fulfillment ratio",
+                        icon = Icons.Default.TrendingUp,
+                        iconColor = Color(0xFF8B5CF6),
+                        progress = taskSuccessRate / 100f
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Metric 5: Current Streak
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(1.05f),
+                        title = "Current Streak",
+                        value = "$currentStreak Days",
+                        subtext = "Active study streak",
+                        icon = Icons.Default.LocalFireDepartment,
+                        iconColor = Color(0xFFEF4444),
+                        progress = (currentStreak / 7f).coerceIn(0f, 1f)
+                    )
+
+                    // Metric 6: Longest Streak
+                    PremiumMetricCard(
+                        modifier = Modifier.weight(0.95f),
+                        title = "Best Streak",
+                        value = "$longestStreak Days",
+                        subtext = "All-time record streak",
+                        icon = Icons.Default.Bolt,
+                        iconColor = Color(0xFFEC4899),
+                        progress = (longestStreak / 14f).coerceIn(0f, 1f)
+                    )
+                }
+
+                // Metric 7: Goals Achieved (Badges unlocked card across full width)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(cardGradient()),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFD5C25).copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EmojiEvents,
+                                contentDescription = null,
+                                tint = Color(0xFFFD5C25),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Merit Badges & Achievements",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Unlocked ${lifetimeStats.activeBadgesCount} out of 6 standard productivity milestones",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${lifetimeStats.activeBadgesCount} Unlocked",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. GITHUB CONTRIBUTIONS HEATMAP (STYLISH CARD CONTAINER)
         item {
             Card(
                 modifier = Modifier
@@ -176,83 +636,38 @@ fun AnalyticsScreen(
                     .clip(RoundedCornerShape(24.dp))
                     .background(cardGradient()),
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
                 colors = CardDefaults.cardColors(containerColor = Color.Transparent)
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Lifetime Progress 🏆",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Your academic lifetime accomplishments and badges.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // --- LIFETIME ANALYTICS SUB-VIEW ---
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Trophy Room (${lifetimeStats.activeBadgesCount} / 5 Merits)",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val badges = listOf(
-                                Triple("Focus Initiate", "🌱", lifetimeStats.totalFocusMinutes > 0),
-                                Triple("Focus Monk", "🧘", lifetimeStats.totalFocusMinutes >= 300),
-                                Triple("High Achiever", "🏅", lifetimeStats.totalTasksCompleted >= 5),
-                                Triple("Unstoppable", "⚡", lifetimeStats.totalHabitCompletions >= 10),
-                                Triple("Committed Scholar", "🎓", lifetimeStats.overallAttendancePercentage >= 80f && lifetimeStats.totalClassesCount > 0)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Contribution Calendar 📅",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-
-                            badges.forEach { (name, emoji, unlocked) ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(
-                                            if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(text = emoji, fontSize = 14.sp)
-                                        Text(
-                                            text = name,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (unlocked) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
+                            Text(
+                                text = "Daily activity logged over the past 365 days",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { showContributionExplanationDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.HelpOutline,
+                                contentDescription = "Explain contributions",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
 
@@ -262,198 +677,338 @@ fun AnalyticsScreen(
                         isDark = isDarkThemeActive,
                         onShowLearnMore = { showContributionExplanationDialog = true }
                     )
+                }
+            }
+        }
+
+        // 4. YEARLY PRODUCTIVITY TREND CHART
+        item {
+            val monthlyTrend = remember(completions, focusRecords, tasks) {
+                val months = FloatArray(12) { 0f }
+                val currentYearStr = SimpleDateFormat("yyyy", Locale.US).format(Date())
+                
+                // Aggregate focus hours
+                focusRecords.forEach { record ->
+                    if (record.dateString.startsWith(currentYearStr)) {
+                        val m = try { record.dateString.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
+                        if (m in 0..11) {
+                            months[m] += record.durationMinutes.toFloat() / 60f
+                        }
+                    }
+                }
+                
+                // Add weighted completed tasks to give visual feedback even without pure focus records
+                tasks.filter { it.completed }.forEach { task ->
+                    if (task.dueDate.startsWith(currentYearStr)) {
+                        val m = try { task.dueDate.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
+                        if (m in 0..11) {
+                            months[m] += 0.5f // Each task counts as 30 mins worth of productive value
+                        }
+                    }
+                }
+                months.toList()
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(cardGradient()),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Yearly Productivity Trend 📈",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Cumulative productivity units mapped across months of this year.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    YearlyProductivityTrendChart(
+                        monthlyValues = monthlyTrend,
+                        primaryColor = dynamicColors.primaryColor,
+                        gradientBrush = dynamicColors.gradientBrush
+                    )
+                }
+            }
+        }
+
+        // 5. MILESTONE ACHIEVEMENTS & DETAILED BADGES
+        item {
+            val totalH = lifetimeStats.totalFocusMinutes / 60
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(cardGradient()),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Milestone Achievements 🎖️",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Track your long-term study merits and unlock medals.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    val milestoneBadges = listOf(
+                        MilestoneBadgeData("Focus Initiate", "Log first focused session.", "🌱", lifetimeStats.totalFocusMinutes > 0, 1f, "Unlocked"),
+                        MilestoneBadgeData("Focus Monk", "Log 300+ focus minutes (5h).", "🧘", lifetimeStats.totalFocusMinutes >= 300, (lifetimeStats.totalFocusMinutes / 300f).coerceIn(0f, 1f), "${lifetimeStats.totalFocusMinutes}/300m"),
+                        MilestoneBadgeData("High Achiever", "Complete 5+ academic tasks.", "🏅", lifetimeStats.totalTasksCompleted >= 5, (lifetimeStats.totalTasksCompleted / 5f).coerceIn(0f, 1f), "${lifetimeStats.totalTasksCompleted}/5 done"),
+                        MilestoneBadgeData("Streak Master", "Reach a 3+ day active streak.", "⚡", longestStreak >= 3, (longestStreak / 3f).coerceIn(0f, 1f), "$longestStreak/3 days"),
+                        MilestoneBadgeData("Academic Legend", "Achieve Level 5 or 20h focus.", "👑", (totalH >= 20 || (1 + (lifetimeStats.totalTasksCompleted * 15 + lifetimeStats.totalFocusMinutes + lifetimeStats.totalHabitCompletions * 10) / 250) >= 5), (lifetimeStats.totalFocusMinutes / 1200f).coerceIn(0f, 1f), "${totalH}/20h focus"),
+                        MilestoneBadgeData("Perfect Scholar", "80%+ attendance with class logs.", "🎓", lifetimeStats.overallAttendancePercentage >= 80f && lifetimeStats.totalClassesCount > 0, (lifetimeStats.overallAttendancePercentage / 100f).coerceIn(0f, 1f), "${lifetimeStats.overallAttendancePercentage.toInt()}% Att.")
+                    )
 
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Timer,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text("Focus Space", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    val totalH = lifetimeStats.totalFocusMinutes / 60
-                                    val totalM = lifetimeStats.totalFocusMinutes % 60
-                                    val focusDisplay = if (totalH > 0) "${totalH}h ${totalM}m" else "${totalM}m"
-                                    Text(
-                                        text = focusDisplay,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                        milestoneBadges.forEach { badge ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(
+                                        if (badge.unlocked) dynamicColors.primaryColor.copy(alpha = 0.05f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
                                     )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text("Cumulative hours", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (badge.unlocked) dynamicColors.primaryColor.copy(alpha = 0.3f)
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (badge.unlocked) dynamicColors.primaryColor.copy(alpha = 0.15f)
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = badge.emoji, fontSize = 18.sp)
                                 }
-                            }
 
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.TaskAlt,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.size(16.dp)
+                                        Text(
+                                            text = badge.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (badge.unlocked) dynamicColors.primaryColor else MaterialTheme.colorScheme.onSurface
                                         )
-                                        Text("Task Power", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (badge.unlocked) dynamicColors.primaryColor.copy(alpha = 0.15f)
+                                                    else MaterialTheme.colorScheme.surfaceVariant
+                                                )
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = badge.progressText,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (badge.unlocked) dynamicColors.primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    val taskRatio = if (lifetimeStats.totalTasksCreated == 0) "0%" else {
-                                        val pct = (lifetimeStats.totalTasksCompleted.toFloat() / lifetimeStats.totalTasksCreated.toFloat() * 100).toInt()
-                                        "$pct%"
-                                    }
-                                    Text(
-                                        text = taskRatio,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text("${lifetimeStats.totalTasksCompleted}/${lifetimeStats.totalTasksCreated} completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = Color(0xFF10B981),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text("Habit Reps", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "${lifetimeStats.totalHabitCompletions} reps",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    val habitNote = if (lifetimeStats.topHabitName != "None") {
-                                        "Top: ${lifetimeStats.topHabitIcon} ${lifetimeStats.topHabitName}"
-                                    } else {
-                                        "Form consistency"
-                                    }
-                                    Text(
-                                        text = habitNote,
+                                        text = badge.description,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        fontSize = 11.sp
                                     )
-                                }
-                            }
-
-                            Card(
-                                modifier = Modifier.weight(1f),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(5.dp)
+                                            .clip(RoundedCornerShape(2.5.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CalendarToday,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFD5C25),
-                                            modifier = Modifier.size(16.dp)
+                                        val animatedProgress by animateFloatAsState(
+                                            targetValue = badge.progressFraction,
+                                            animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+                                            label = "badgeProgress"
                                         )
-                                        Text("Schedule", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .fillMaxWidth(fraction = animatedProgress)
+                                                .clip(RoundedCornerShape(2.5.dp))
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        colors = listOf(dynamicColors.primaryColor.copy(alpha = 0.7f), dynamicColors.primaryColor)
+                                                    )
+                                                )
+                                        )
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    val attPct = "%.0f%%".format(lifetimeStats.overallAttendancePercentage)
-                                    Text(
-                                        text = attPct,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    val classAttNote = if (lifetimeStats.totalClassesCount > 0) {
-                                        "${lifetimeStats.totalClassesAttended}/${lifetimeStats.totalClassesCount} attended"
-                                    } else {
-                                        "No timetable logs"
-                                    }
-                                    Text(
-                                        text = classAttNote,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))
-                            .padding(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEvents,
-                            contentDescription = "Trophy",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        val motMessage = if (lifetimeStats.activeBadgesCount == 5) {
-                            "Absolute legend! You've unlocked all 5 lifetime study badges! 👑"
-                        } else if (lifetimeStats.activeBadgesCount >= 3) {
-                            "Phenomenal consistency. Keep compiling focus and habit sessions!"
-                        } else {
-                            "Grow your progress! Unlock more merit badges by tracking classes, tasks and focus. 💪"
+        // 6. LIFETIME INSIGHTS GLASSMORPHIC CARD
+        item {
+            val monthlyTrend = remember(completions, focusRecords, tasks) {
+                val months = FloatArray(12) { 0f }
+                val currentYearStr = SimpleDateFormat("yyyy", Locale.US).format(Date())
+                focusRecords.forEach { record ->
+                    if (record.dateString.startsWith(currentYearStr)) {
+                        val m = try { record.dateString.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
+                        if (m in 0..11) months[m] += record.durationMinutes.toFloat() / 60f
+                    }
+                }
+                tasks.filter { it.completed }.forEach { task ->
+                    if (task.dueDate.startsWith(currentYearStr)) {
+                        val m = try { task.dueDate.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
+                        if (m in 0..11) months[m] += 0.5f
+                    }
+                }
+                months.toList()
+            }
+
+            val bestMonthName = remember(monthlyTrend) {
+                val monthsNames = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+                val maxIndex = monthlyTrend.indices.maxByOrNull { monthlyTrend[it] } ?: -1
+                if (maxIndex != -1 && monthlyTrend[maxIndex] > 0f) monthsNames[maxIndex] else "None"
+            }
+
+            val mostProductiveDay = remember(completions, focusRecords, tasks) {
+                val dayValues = FloatArray(7) { 0f }
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val cal = Calendar.getInstance()
+                
+                focusRecords.forEach { record ->
+                    try {
+                        sdf.parse(record.dateString)?.let { date ->
+                            cal.time = date
+                            val day = cal.get(Calendar.DAY_OF_WEEK)
+                            val index = if (day == Calendar.SUNDAY) 6 else day - 2
+                            dayValues[index] += record.durationMinutes.toFloat()
                         }
+                    } catch (e: Exception) {}
+                }
+                tasks.filter { it.completed }.forEach { task ->
+                    try {
+                        sdf.parse(task.dueDate)?.let { date ->
+                            cal.time = date
+                            val day = cal.get(Calendar.DAY_OF_WEEK)
+                            val index = if (day == Calendar.SUNDAY) 6 else day - 2
+                            dayValues[index] += 15f
+                        }
+                    } catch (e: Exception) {}
+                }
+                val daysNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+                val maxIndex = dayValues.indices.maxByOrNull { dayValues[it] } ?: -1
+                if (maxIndex != -1 && dayValues[maxIndex] > 0f) daysNames[maxIndex] else "Midweek"
+            }
+
+            val lifetimeConsistency = remember(activeDaysSet) {
+                val base = if (activeDaysSet.isEmpty()) 1 else activeDaysSet.size
+                minOf(100, (base * 100) / 30).coerceAtLeast(15) // Consistency ratio normalized out of 30 days
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(cardGradient()),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = motMessage,
+                            text = "Lifetime Focus Insights 🧠",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Algorithmic analysis of your long-term study patterns.",
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        InsightRow(
+                            title = "Highest Output Month",
+                            value = if (bestMonthName == "None") "Not enough logs" else "$bestMonthName 🌟",
+                            description = "The calendar month where you registered maximum completed tasks and study sessions.",
+                            icon = Icons.Default.Stars,
+                            iconColor = Color(0xFFF59E0B)
+                        )
+
+                        InsightRow(
+                            title = "Power Study Day",
+                            value = "$mostProductiveDay ⚡",
+                            description = "The specific day of the week where you consistently demonstrate the highest focus volume.",
+                            icon = Icons.Default.FlashOn,
+                            iconColor = Color(0xFF10B981)
+                        )
+
+                        InsightRow(
+                            title = "Lifetime Consistency",
+                            value = "$lifetimeConsistency% Index 📈",
+                            description = "Overall attendance, task completion density, and habit repetition consistency.",
+                            icon = Icons.Default.Timeline,
+                            iconColor = Color(0xFF8B5CF6)
                         )
                     }
                 }
             }
+        }
+        item {
+            AcademicDistributionCard(tasks = tasks, habits = habits)
         }
         item {
             DonateSection()
@@ -576,21 +1131,20 @@ fun SimpleBarChart(
     unit: String,
     barColor: Color
 ) {
-    val animatedProgress = remember { mutableStateListOf<Float>() }
+    val transitionProgress = remember { Animatable(0f) }
     LaunchedEffect(values) {
-        animatedProgress.clear()
-        values.forEach { _ -> animatedProgress.add(0f) }
-        delay(100)
-        values.forEachIndexed { i, value ->
-            animatedProgress[i] = value
-        }
+        transitionProgress.snapTo(0f)
+        transitionProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
+        )
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
-            .padding(top = 16.dp, bottom = 12.dp)
+            .height(200.dp)
+            .padding(top = 16.dp, bottom = 18.dp)
     ) {
         val onSurfaceColor = MaterialTheme.colorScheme.onSurface
 
@@ -600,15 +1154,30 @@ fun SimpleBarChart(
 
             val gridRows = 4
             val rowHeight = height / gridRows
+            val safeMax = if (maxValue == 0f) 1f else maxValue
 
-            // 1. Draw horizontal gridlines and vertical axis guides
+            // 1. Draw horizontal gridlines and vertical axis labels on the right edge
             for (i in 0..gridRows) {
                 val y = i * rowHeight
+                val gridVal = safeMax * (gridRows - i) / gridRows
+                val labelText = if (unit == "%") "${gridVal.toInt()}%" else "%.1f%s".format(gridVal, unit)
+
                 drawLine(
                     color = onSurfaceColor.copy(alpha = 0.08f),
                     start = Offset(x = 0f, y = y),
-                    end = Offset(x = width, y = y),
+                    end = Offset(x = width - 42.dp.toPx(), y = y),
                     strokeWidth = 1.dp.toPx()
+                )
+
+                drawContext.canvas.nativeCanvas.drawText(
+                    labelText,
+                    width - 34.dp.toPx(),
+                    y + 4.dp.toPx(),
+                    android.graphics.Paint().apply {
+                        color = onSurfaceColor.copy(alpha = 0.45f).toArgb()
+                        textSize = 9.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.LEFT
+                    }
                 )
             }
 
@@ -616,55 +1185,67 @@ fun SimpleBarChart(
             val totalBars = days.size
             if (totalBars == 0) return@Canvas
 
-            val barSpacing = 16.dp.toPx()
-            val availableBarWidth = width - (barSpacing * (totalBars + 1))
+            val barSpacing = 14.dp.toPx()
+            val availableBarWidth = (width - 46.dp.toPx()) - (barSpacing * (totalBars + 1))
             val barWidth = availableBarWidth / totalBars
-
-            val safeMax = if (maxValue == 0f) 1f else maxValue
 
             val maxVal = values.maxOrNull() ?: 0f
             val maxIndex = if (maxVal > 0f) values.indexOf(maxVal) else -1
 
             for (i in 0 until totalBars) {
                 val day = days[i]
-                val currentRawVal = if (i < animatedProgress.size) animatedProgress[i] else 0f
+                val currentRawVal = values.getOrNull(i) ?: 0f
+                val currentAnimatedVal = currentRawVal * transitionProgress.value
+
+                // Draw background track for each column
+                val barLeft = barSpacing + i * (barWidth + barSpacing)
+                drawRoundRect(
+                    color = onSurfaceColor.copy(alpha = 0.03f),
+                    topLeft = Offset(x = barLeft, y = 0f),
+                    size = Size(width = barWidth, height = height),
+                    cornerRadius = CornerRadius(x = 6.dp.toPx(), y = 6.dp.toPx())
+                )
 
                 // Limit maximum drawing heights
-                val normalizedValue = if (currentRawVal > safeMax) safeMax else currentRawVal
+                val normalizedValue = if (currentAnimatedVal > safeMax) safeMax else currentAnimatedVal
                 val percentHeight = normalizedValue / safeMax
-                val barActualHeight = (height * percentHeight * 0.85f) // Reserve some top space for badges
-
-                val barLeft = barSpacing + i * (barWidth + barSpacing)
+                val barActualHeight = (height * percentHeight * 0.85f)
                 val barTop = height - barActualHeight
 
                 val isHighlighted = maxIndex != -1 && i == maxIndex && currentRawVal > 0f
                 val brushColors = if (isHighlighted) {
-                    listOf(barColor.copy(alpha = 0.85f), barColor)
+                    listOf(barColor.copy(alpha = 0.95f), barColor.copy(alpha = 0.7f))
                 } else {
-                    listOf(barColor.copy(alpha = 0.25f), barColor.copy(alpha = 0.12f))
+                    listOf(barColor.copy(alpha = 0.6f), barColor.copy(alpha = 0.3f))
                 }
 
                 // Draw standard Material card bars with nice rounded top-corners
                 drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = brushColors
-                    ),
+                    brush = Brush.verticalGradient(colors = brushColors),
                     topLeft = Offset(x = barLeft, y = barTop),
                     size = Size(width = barWidth, height = barActualHeight),
-                    cornerRadius = CornerRadius(x = 4.dp.toPx(), y = 4.dp.toPx())
+                    cornerRadius = CornerRadius(x = 6.dp.toPx(), y = 6.dp.toPx())
                 )
 
+                if (isHighlighted && currentAnimatedVal > 0f) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.9f),
+                        radius = 2.5.dp.toPx(),
+                        center = Offset(x = barLeft + barWidth / 2f, y = barTop + 4.dp.toPx())
+                    )
+                }
+
                 // 3. Draw numerical badges over active bars
-                if (currentRawVal > 0f) {
+                if (currentAnimatedVal > 0f) {
                     drawContext.canvas.nativeCanvas.drawText(
                         if (currentRawVal % 1f == 0f) currentRawVal.toInt().toString() else "%.1f".format(currentRawVal),
                         barLeft + barWidth / 2f,
                         if (barTop - 12.dp.toPx() < 12.dp.toPx()) 12.dp.toPx() else barTop - 4.dp.toPx(),
                         android.graphics.Paint().apply {
-                            color = onSurfaceColor.copy(alpha = 0.82f).toArgb()
+                            color = if (isHighlighted) barColor.toArgb() else onSurfaceColor.copy(alpha = 0.82f).toArgb()
                             textSize = 10.sp.toPx()
                             textAlign = android.graphics.Paint.Align.CENTER
-                            isFakeBoldText = true
+                            isFakeBoldText = isHighlighted
                         }
                     )
                 }
@@ -673,11 +1254,12 @@ fun SimpleBarChart(
                 drawContext.canvas.nativeCanvas.drawText(
                     day,
                     barLeft + barWidth / 2f,
-                    height + 12.dp.toPx(),
+                    height + 14.dp.toPx(),
                     android.graphics.Paint().apply {
-                        color = onSurfaceColor.copy(alpha = 0.65f).toArgb()
+                        color = if (isHighlighted) barColor.toArgb() else onSurfaceColor.copy(alpha = 0.65f).toArgb()
                         textSize = 11.sp.toPx()
                         textAlign = android.graphics.Paint.Align.CENTER
+                        isFakeBoldText = isHighlighted
                     }
                 )
             }
@@ -1066,3 +1648,1008 @@ fun DonateSection() {
         }
     }
 }
+
+@Composable
+fun AcademicDistributionCard(
+    tasks: List<TaskEntity>,
+    habits: List<HabitEntity>
+) {
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Tasks by Subject, 1 = Habits by Category
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(cardGradient()),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Thematic Distribution 🎨",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Understand your focus allocation across subjects and habits.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Segmented selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val tabs = listOf("Subjects", "Habit Categories")
+                tabs.forEachIndexed { i, tab ->
+                    val isActive = selectedTab == i
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .then(
+                                if (isActive) Modifier.background(Brush.linearGradient(listOf(Color(0xFF2563EB), Color(0xFF3B82F6)))) else Modifier
+                            )
+                            .clickable { selectedTab = i }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = tab,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            if (selectedTab == 0) {
+                // Tasks by Subject
+                val subjectsMap = remember(tasks) {
+                    tasks.groupBy { if (it.subject.trim().isEmpty()) "General" else it.subject.trim() }
+                        .mapValues { entry ->
+                            val total = entry.value.size
+                            val completed = entry.value.count { it.completed }
+                            val rate = if (total == 0) 0f else completed.toFloat() / total.toFloat()
+                            Triple(completed, total, rate)
+                        }.toList()
+                        .sortedByDescending { it.second.second }
+                }
+
+                if (subjectsMap.isEmpty()) {
+                    EmptyStatePlaceholder(text = "No tasks available to show subject analytics.")
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        subjectsMap.take(5).forEach { (subject, stats) ->
+                            val (completed, total, rate) = stats
+                            DistributionRow(
+                                title = subject,
+                                countText = "$completed/$total completed",
+                                percentage = rate,
+                                barColor = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Habits by Category
+                val categoriesMap = remember(habits) {
+                    habits.groupBy { if (it.category.trim().isEmpty()) "Other" else it.category.trim() }
+                        .mapValues { entry ->
+                            entry.value.size
+                        }.toList()
+                        .sortedByDescending { it.second }
+                }
+
+                val totalHabits = remember(habits) { habits.size }
+
+                if (categoriesMap.isEmpty()) {
+                    EmptyStatePlaceholder(text = "No habits available to show category analytics.")
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        categoriesMap.take(5).forEach { (category, count) ->
+                            val rate = if (totalHabits == 0) 0f else count.toFloat() / totalHabits.toFloat()
+                            DistributionRow(
+                                title = category,
+                                countText = "$count habits",
+                                percentage = rate,
+                                barColor = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DistributionRow(
+    title: String,
+    countText: String,
+    percentage: Float,
+    barColor: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = countText,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        val animatedWidthFactor by animateFloatAsState(
+            targetValue = percentage,
+            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+            label = "widthFactor"
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction = animatedWidthFactor.coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(barColor.copy(alpha = 0.7f), barColor)
+                        )
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+fun EmptyStatePlaceholder(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun WeeklyGoalProgressCard(
+    weeklyFocusHours: Float,
+    weeklyGoalHours: Int,
+    onUpdateGoal: (Int) -> Unit,
+    primaryColor: Color,
+    gradientBrush: Brush
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(cardGradient()),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Weekly Focus Target 🎯",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Set and crush your weekly study target",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                // Active status pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(primaryColor.copy(alpha = 0.1f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "ACTIVE GOAL",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = primaryColor
+                    )
+                }
+            }
+
+            // Interactive Progress Tracker Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Circular Canvas Progress Arc
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val progressFraction = if (weeklyGoalHours <= 0) 1f else (weeklyFocusHours / weeklyGoalHours).coerceIn(0f, 1.5f)
+                    
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = progressFraction.coerceIn(0f, 1f),
+                        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+                        label = "goalProgress"
+                    )
+
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        // Background circle
+                        drawArc(
+                            color = primaryColor.copy(alpha = 0.08f),
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 8.dp.toPx(),
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        )
+                        // Foreground dynamic progress arc
+                        drawArc(
+                            brush = gradientBrush,
+                            startAngle = -90f,
+                            sweepAngle = animatedProgress * 360f,
+                            useCenter = false,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 8.dp.toPx(),
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${(progressFraction * 100).toInt()}%",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (progressFraction >= 1f) "Crushed!" else "Focus",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (progressFraction >= 1f) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Stats and Interactive controls
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Hours Logged This Week:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "%.1fh".format(weeklyFocusHours),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "/ ${weeklyGoalHours}h target",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+
+                    // Interactive Goal Adjuster Button Bar
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(
+                            onClick = { if (weeklyGoalHours > 1) onUpdateGoal(weeklyGoalHours - 1) },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = "Decrease target hours",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Goal",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+
+                        IconButton(
+                            onClick = { onUpdateGoal(weeklyGoalHours + 1) },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Increase target hours",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Dynamic Motivational Quote based on percentage
+            val progressPercentage = if (weeklyGoalHours <= 0) 100 else (weeklyFocusHours / weeklyGoalHours * 100).toInt()
+            val motivationText = when {
+                progressPercentage == 0 -> "Let's kick things off! Hit the timer tab to log your first session. ⏰"
+                progressPercentage < 25 -> "Good start! Focus is the doorway to absolute mastery. 🚪"
+                progressPercentage < 50 -> "Steady progress! Keep feeding the fire of knowledge. 📚"
+                progressPercentage < 75 -> "You're in the study groove! Fantastic momentum! ⚡"
+                progressPercentage < 100 -> "So close! Finish the week strong like a champion! 🎯"
+                else -> "Goal crushed! Focus Monk status achieved this week! 👑"
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(primaryColor.copy(alpha = 0.05f))
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lightbulb,
+                    contentDescription = null,
+                    tint = primaryColor,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = motivationText,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DailyAcademicMilestones(
+    todayFocusHours: Float,
+    completedHabitsCount: Int,
+    completedTasksCount: Int,
+    primaryColor: Color
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(cardGradient()),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Daily Academic Milestones 🚀",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Unlock your achievements by building study consistency today.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Milestone Rows
+            val todayFocusMinutes = todayFocusHours * 60
+            val focusCompleted = todayFocusMinutes >= 30f
+            val habitsCompleted = completedHabitsCount >= 1
+            val tasksCompleted = completedTasksCount >= 1
+
+            MilestoneItemRow(
+                title = "Focus Spark (30m Study)",
+                description = "Log at least 30 minutes of focus time.",
+                progressText = "${todayFocusMinutes.toInt()}m / 30m",
+                progressFraction = (todayFocusMinutes / 30f).coerceIn(0f, 1f),
+                isCompleted = focusCompleted,
+                primaryColor = primaryColor,
+                emoji = "🧘"
+            )
+
+            MilestoneItemRow(
+                title = "Habit Builder (1+ Habits)",
+                description = "Complete at least one positive habit today.",
+                progressText = "$completedHabitsCount completed",
+                progressFraction = if (habitsCompleted) 1f else 0f,
+                isCompleted = habitsCompleted,
+                primaryColor = Color(0xFF10B981),
+                emoji = "⚡"
+            )
+
+            MilestoneItemRow(
+                title = "Academic Closer (1+ Tasks)",
+                description = "Mark a task due today as completed.",
+                progressText = "$completedTasksCount completed",
+                progressFraction = if (tasksCompleted) 1f else 0f,
+                isCompleted = tasksCompleted,
+                primaryColor = Color(0xFFFD5C25),
+                emoji = "🏅"
+            )
+        }
+    }
+}
+
+@Composable
+fun MilestoneItemRow(
+    title: String,
+    description: String,
+    progressText: String,
+    progressFraction: Float,
+    isCompleted: Boolean,
+    primaryColor: Color,
+    emoji: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isCompleted) primaryColor.copy(alpha = 0.06f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            )
+            .border(
+                width = 1.dp,
+                color = if (isCompleted) primaryColor.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Icon / Emoji Circle
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(
+                    if (isCompleted) primaryColor.copy(alpha = 0.15f)
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = emoji, fontSize = 18.sp)
+        }
+
+        // Title and description
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isCompleted) primaryColor else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = progressText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isCompleted) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            
+            // Progress Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                val animatedProgress by animateFloatAsState(
+                    targetValue = progressFraction,
+                    animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+                    label = "milestoneProgress"
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction = animatedProgress)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(primaryColor.copy(alpha = 0.7f), primaryColor)
+                            )
+                        )
+                )
+            }
+        }
+
+        // Checkmark badge
+        if (isCompleted) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(primaryColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Completed",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RecentFocusLogsCard(
+    focusRecords: List<FocusRecordEntity>,
+    primaryColor: Color
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(cardGradient()),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Focus Activity Logs 📜",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Chronological archive of focus sessions",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(
+                        text = if (expanded) "Collapse" else "View All",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = primaryColor
+                    )
+                }
+            }
+
+            if (focusRecords.isEmpty()) {
+                EmptyStatePlaceholder(text = "No focus records recorded yet. Let's study!")
+            } else {
+                val displayList = if (expanded) focusRecords.sortedByDescending { it.dateString } else focusRecords.sortedByDescending { it.dateString }.take(3)
+                
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    displayList.forEach { record ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(primaryColor.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Timer,
+                                    contentDescription = null,
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${record.durationMinutes} Minutes Session",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatLogDate(record.dateString),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "+ ${(record.durationMinutes / 15).coerceAtLeast(1)} Pts",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun formatLogDate(dateString: String): String {
+    return try {
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val formatter = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.US)
+        val date = parser.parse(dateString)
+        date?.let { formatter.format(it) } ?: dateString
+    } catch (e: Exception) {
+        dateString
+    }
+}
+
+data class MilestoneBadgeData(
+    val name: String,
+    val description: String,
+    val emoji: String,
+    val unlocked: Boolean,
+    val progressFraction: Float,
+    val progressText: String
+)
+
+@Composable
+fun PremiumMetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subtext: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    progress: Float
+) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardGradient()),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(iconColor.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtext,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
+
+            // Small horizontal progress line inside metric card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                val animatedProgress by animateFloatAsState(
+                    targetValue = progress,
+                    animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+                    label = "metricProgress"
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction = animatedProgress)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(iconColor)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun YearlyProductivityTrendChart(
+    monthlyValues: List<Float>,
+    primaryColor: Color,
+    gradientBrush: Brush
+) {
+    val monthLabels = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
+    val maxValue = remember(monthlyValues) {
+        val max = monthlyValues.maxOrNull() ?: 10f
+        if (max < 5f) 5f else max
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Simple Grid lines & Bars
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            monthlyValues.forEachIndexed { index, value ->
+                val fraction = (value / maxValue).coerceIn(0f, 1f)
+                val animatedHeightFraction by animateFloatAsState(
+                    targetValue = fraction,
+                    animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+                    label = "barHeight"
+                )
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.Bottom,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        // The active progress bar
+                        Box(
+                            modifier = Modifier
+                                .width(12.dp)
+                                .fillMaxHeight(fraction = animatedHeightFraction)
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .background(
+                                    if (fraction >= 0.8f) gradientBrush
+                                    else Brush.verticalGradient(
+                                        colors = listOf(primaryColor, primaryColor.copy(alpha = 0.4f))
+                                    )
+                                )
+                        )
+                    }
+                }
+            }
+        }
+
+        // X-Axis Labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            monthLabels.forEachIndexed { index, label ->
+                val hasValue = monthlyValues.getOrNull(index) ?: 0f > 0f
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (hasValue) FontWeight.Bold else FontWeight.Normal,
+                    color = if (hasValue) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun InsightRow(
+    title: String,
+    value: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(iconColor.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = iconColor
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
