@@ -288,20 +288,26 @@ fun AnalyticsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Days Left in $currentYear 📅",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             Text(
                                 text = "Every square represents one day of this year.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                         
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         // Small badge with percentage
                         Box(
                             modifier = Modifier
@@ -313,7 +319,9 @@ fun AnalyticsScreen(
                                 text = "$percentPassed% Gone",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = dynamicColors.primaryColor
+                                color = dynamicColors.primaryColor,
+                                softWrap = false,
+                                maxLines = 1
                             )
                         }
                     }

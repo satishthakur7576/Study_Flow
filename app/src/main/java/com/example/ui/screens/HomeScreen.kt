@@ -187,8 +187,10 @@ fun HomeScreen(
     val overallAttendance by viewModel.overallAttendancePercentage.collectAsStateWithLifecycle()
     val streakCount by viewModel.currentStreak.collectAsStateWithLifecycle()
     val activeTheme by viewModel.themeAccent.collectAsStateWithLifecycle()
+    val dynamicColors = remember(activeTheme) { getDynamicColors(activeTheme) }
     val weeklyAnalytics by viewModel.weeklyAnalytics.collectAsStateWithLifecycle()
     val focusRecords by viewModel.focusRecords.collectAsStateWithLifecycle()
+    val weeklyFocusGoalHours by viewModel.weeklyFocusGoalHours.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("study_flow_prefs", android.content.Context.MODE_PRIVATE) }
@@ -218,23 +220,39 @@ fun HomeScreen(
     // Build overall active streak sparkline from weekly focus/habit records
     val streakSparkline = remember(weeklyAnalytics) {
         val points = mutableListOf<Float>()
-        var running = 0f
+        val activeDays = BooleanArray(7) { idx ->
+            val hasFocus = (weeklyAnalytics.focusHours.getOrNull(idx) ?: 0f) > 0f
+            val hasHabit = (weeklyAnalytics.habitConsistencyRates.getOrNull(idx) ?: 0f) > 0f
+            hasFocus || hasHabit
+        }
+
         for (i in 0 until 7) {
-            val hasFocus = (weeklyAnalytics.focusHours.getOrNull(i) ?: 0f) > 0f
-            val hasHabit = (weeklyAnalytics.habitConsistencyRates.getOrNull(i) ?: 0f) > 0f
-            if (hasFocus || hasHabit) {
-                running += 1f
+            var streakVal = 0f
+            if (activeDays[i]) {
+                streakVal = 1f
+                var j = i - 1
+                while (j >= 0 && activeDays[j]) {
+                    streakVal += 1f
+                    j--
+                }
             } else {
-                running = 0f
+                var j = i - 1
+                if (j >= 0 && activeDays[j]) {
+                    streakVal = 1f
+                    j--
+                    while (j >= 0 && activeDays[j]) {
+                        streakVal += 1f
+                        j--
+                    }
+                }
             }
-            points.add(running)
+            points.add(streakVal)
         }
         points
     }
 
     // Control toggles for dynamic widgets matching all Home Screen sections
     val showHeroWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_hero_widget", true)) }
-    val showStatsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_stats_widget", true)) }
     val showHabitsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_habits_widget", true)) }
     val showScheduleWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_schedule_widget", true)) }
     val showTimerWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_timer_widget", true)) }
@@ -285,19 +303,33 @@ fun HomeScreen(
     val completedHabitsCount = habits.count { habit ->
         completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
     }
-    val taskRate = if (todayTotalTasksCount > 0) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 0f
-    val habitRate = if (totalHabitsCount > 0) completedHabitsCount.toFloat() / totalHabitsCount.toFloat() else 0f
-    val overallProductivityPercentage = if (todayTotalTasksCount == 0 && totalHabitsCount == 0) {
-        if (focusMinutes > 0) {
-            (focusMinutes * 2).coerceIn(10, 100)
-        } else {
-            0
-        }
+    val dailyGoalMinutes = if (weeklyFocusGoalHours > 0) (weeklyFocusGoalHours * 60) / 7 else 60
+    val focusFraction = if (dailyGoalMinutes > 0) {
+        (focusMinutes.toFloat() / dailyGoalMinutes).coerceAtMost(1f)
     } else {
-        val taskWeight = if (todayTotalTasksCount > 0) taskRate else 0f
-        val habitWeight = if (totalHabitsCount > 0) habitRate else 0f
-        val divider = if (todayTotalTasksCount > 0 && totalHabitsCount > 0) 2f else 1f
-        (((taskWeight + habitWeight) / divider) * 100).toInt().coerceIn(0, 100)
+        0f
+    }
+    val overallProductivityPercentage = remember(focusFraction, todayTotalTasksCount, todayCompletedTasksCount, totalHabitsCount, completedHabitsCount) {
+        val hasTasks = todayTotalTasksCount > 0
+        val hasHabits = totalHabitsCount > 0
+        val taskRateFraction = if (hasTasks) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 0f
+        val habitRateFraction = if (hasHabits) completedHabitsCount.toFloat() / totalHabitsCount.toFloat() else 0f
+
+        val score = when {
+            hasTasks && hasHabits -> {
+                (focusFraction * 40f) + (taskRateFraction * 30f) + (habitRateFraction * 30f)
+            }
+            hasTasks -> {
+                (focusFraction * 50f) + (taskRateFraction * 50f)
+            }
+            hasHabits -> {
+                (focusFraction * 50f) + (habitRateFraction * 50f)
+            }
+            else -> {
+                focusFraction * 100f
+            }
+        }
+        score.toInt().coerceIn(0, 100)
     }
 
     BoxWithConstraints(
@@ -332,7 +364,7 @@ fun HomeScreen(
                     .fillMaxHeight()
                     .widthIn(max = 680.dp)
                     .testTag("home_screen"),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 160.dp),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(itemSpacing)
             ) {
                 // --- 1. THE ULTIMATE HEADER ---
@@ -552,6 +584,16 @@ fun HomeScreen(
                 label = "hero_grad_val"
             )
 
+            val heroGradientColors = remember(activeTheme) {
+                when (activeTheme) {
+                    "Sunset Red" -> listOf(Color(0xFFFD5C25), Color(0xFFEF4444), Color(0xFFC026D3))
+                    "Ocean Blue" -> listOf(Color(0xFF0D99FF), Color(0xFF4F7CFF), Color(0xFF7C3AED))
+                    "Forest Green" -> listOf(Color(0xFF00C070), Color(0xFF10B981), Color(0xFF0D9488))
+                    "Lavender" -> listOf(Color(0xFFAC56FA), Color(0xFF7C3AED), Color(0xFFC084FC))
+                    else -> listOf(Color(0xFFFD5C25), Color(0xFFEF4444), Color(0xFFC026D3))
+                }
+            }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -560,7 +602,7 @@ fun HomeScreen(
                         elevation = 16.dp,
                         shape = RoundedCornerShape(24.dp),
                         clip = false,
-                        spotColor = Color(0xFF4F7CFF).copy(alpha = 0.25f)
+                        spotColor = dynamicColors.primaryColor.copy(alpha = 0.25f)
                     ),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
@@ -571,7 +613,7 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED), Color(0xFF9333EA)),
+                                colors = heroGradientColors,
                                 start = Offset(animatedOffset, 0f),
                                 end = Offset(1000f - animatedOffset, 1000f)
                             )
@@ -738,132 +780,7 @@ fun HomeScreen(
             }
         }
 
-        // --- 3. PREMIUM QUICK STATS GRID ---
-        if (showStatsWidget.value) {
-            item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = screenPadding),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Quick Insights",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                        letterSpacing = (-0.5).sp
-                    )
-                )
 
-                if (isTablet) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        val totalHrs = focusMinutes / 60
-                        val totalMins = focusMinutes % 60
-                        PremiumStatCard(
-                            modifier = Modifier.weight(1f),
-                            value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
-                            label = "Study Hours",
-                            trend = "${focusMinutes}m focused today",
-                            trendPositive = focusMinutes >= yesterdayFocusMinutes,
-                            sparklinePoints = weeklyAnalytics.focusHours.map { it.coerceAtLeast(0f) },
-                            icon = Icons.Outlined.HourglassEmpty,
-                            isDark = isDarkThemeActive
-                        )
-                        PremiumStatCard(
-                            modifier = Modifier.weight(1f),
-                            value = "$todayCompletedTasksCount/$todayTotalTasksCount",
-                            label = "Today's Tasks",
-                            trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "0 tasks today",
-                            trendPositive = todayCompletedTasksCount > 0 || todayTotalTasksCount == 0,
-                            sparklinePoints = weeklyAnalytics.taskCompletionRates,
-                            icon = Icons.Outlined.CheckCircle,
-                            isDark = isDarkThemeActive
-                        )
-                        PremiumStatCard(
-                            modifier = Modifier.weight(1f),
-                            value = "$overallProductivityPercentage/100",
-                            label = "Focus Score",
-                            trend = if (overallProductivityPercentage >= 80) "Excellent 🧠" else if (overallProductivityPercentage >= 50) "Good Progress ⚡" else if (overallProductivityPercentage > 0) "Getting Started 🌱" else "No activity yet 💤",
-                            trendPositive = overallProductivityPercentage >= 50,
-                            sparklinePoints = weeklyAnalytics.habitConsistencyRates.mapIndexed { idx, rate -> (rate + (weeklyAnalytics.focusHours.getOrElse(idx) { 0f } * 10f)).coerceAtMost(100f) },
-                            icon = Icons.Outlined.Bolt,
-                            isDark = isDarkThemeActive
-                        )
-                        PremiumStatCard(
-                            modifier = Modifier.weight(1f),
-                            value = "$streakCount ${if (streakCount == 1) "Day" else "Days"}",
-                            label = "Current Streak",
-                            trend = if (streakCount > 0) "Active Streak 🔥" else "Start a streak! 💪",
-                            trendPositive = streakCount > 0,
-                            sparklinePoints = streakSparkline,
-                            icon = Icons.Outlined.LocalFireDepartment,
-                            isDark = isDarkThemeActive
-                        )
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            val totalHrs = focusMinutes / 60
-                            val totalMins = focusMinutes % 60
-                            PremiumStatCard(
-                                modifier = Modifier.weight(1f),
-                                value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
-                                label = "Study Hours",
-                                trend = "${focusMinutes}m focused today",
-                                trendPositive = focusMinutes >= yesterdayFocusMinutes,
-                                sparklinePoints = weeklyAnalytics.focusHours.map { it.coerceAtLeast(0f) },
-                                icon = Icons.Outlined.HourglassEmpty,
-                                isDark = isDarkThemeActive
-                            )
-                            PremiumStatCard(
-                                modifier = Modifier.weight(1f),
-                                value = "$todayCompletedTasksCount/$todayTotalTasksCount",
-                                label = "Today's Tasks",
-                                trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "0 tasks today",
-                                trendPositive = todayCompletedTasksCount > 0 || todayTotalTasksCount == 0,
-                                sparklinePoints = weeklyAnalytics.taskCompletionRates,
-                                icon = Icons.Outlined.CheckCircle,
-                                isDark = isDarkThemeActive
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            PremiumStatCard(
-                                modifier = Modifier.weight(1f),
-                                value = "$overallProductivityPercentage/100",
-                                label = "Focus Score",
-                                trend = if (overallProductivityPercentage >= 80) "Excellent 🧠" else if (overallProductivityPercentage >= 50) "Good Progress ⚡" else if (overallProductivityPercentage > 0) "Getting Started 🌱" else "No activity yet 💤",
-                                trendPositive = overallProductivityPercentage >= 50,
-                                sparklinePoints = weeklyAnalytics.habitConsistencyRates.mapIndexed { idx, rate -> (rate + (weeklyAnalytics.focusHours.getOrElse(idx) { 0f } * 10f)).coerceAtMost(100f) },
-                                icon = Icons.Outlined.Bolt,
-                                isDark = isDarkThemeActive
-                            )
-                            PremiumStatCard(
-                                modifier = Modifier.weight(1f),
-                                value = "$streakCount ${if (streakCount == 1) "Day" else "Days"}",
-                                label = "Current Streak",
-                                trend = if (streakCount > 0) "Active Streak 🔥" else "Start a streak! 💪",
-                                trendPositive = streakCount > 0,
-                                sparklinePoints = streakSparkline,
-                                icon = Icons.Outlined.LocalFireDepartment,
-                                isDark = isDarkThemeActive
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        }
 
         // --- 4. TODAY'S HABITS WIDGET ---
         if (showHabitsWidget.value) {
@@ -1299,123 +1216,7 @@ fun HomeScreen(
         }
         }
 
-        // --- 7. PREMIUM AI INSIGHTS CARD ---
-        if (showAiInsightsWidget.value) {
-            item {
-                Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = screenPadding),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "AI Schedule Coach",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                        letterSpacing = (-0.5).sp
-                    )
-                )
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkThemeActive) Color(0xFF1E293B) else Color.White
-                    ),
-                    border = BorderStroke(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(
-                            listOf(Color(0xFF4F7CFF).copy(alpha = 0.5f), Color(0xFF7C3AED).copy(alpha = 0.5f))
-                        )
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = Color(0xFF7C3AED)
-                                )
-                                Text(
-                                    text = "Personalized Study Insights",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
-                                    ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF10B981).copy(alpha = 0.12f))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "94% Accuracy Match",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = Color(0xFF10B981),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp
-                                    )
-                                )
-                            }
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            listOf(
-                                "💡 You study best between 8 PM – 10 PM daily.",
-                                "⚡ You completed 25% more academic tasks than yesterday.",
-                                "🌅 You are maintaining an excellent wake-up early routine.",
-                                "🎯 Complete Coding before dinner to maintain your streak."
-                            ).forEach { insightText ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Text(
-                                        text = insightText,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF475569),
-                                            fontSize = 13.sp
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = { /* actionable visual link */ },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Apply Automated Focus Schedule", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-        }
 
         // --- 8. TODAY'S GOALS CHECKLIST ---
         if (showGoalsWidget.value) {
@@ -1847,6 +1648,7 @@ fun HomeScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Row(
+                                                    modifier = Modifier.weight(1f),
                                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
@@ -1862,18 +1664,22 @@ fun HomeScreen(
                                                         Text(text = tempAvatar, fontSize = 24.sp)
                                                     }
 
-                                                    Column {
+                                                    Column(modifier = Modifier.weight(1f)) {
                                                         Text(
                                                             text = if (tempName.isBlank()) "Academic Achiever" else tempName,
                                                             style = MaterialTheme.typography.bodyLarge,
                                                             fontWeight = FontWeight.ExtraBold,
-                                                            color = Color.White
+                                                            color = Color.White,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                         )
                                                         Text(
                                                             text = tempMajor,
                                                             style = MaterialTheme.typography.labelSmall,
                                                             color = Color.White.copy(alpha = 0.85f),
-                                                            fontWeight = FontWeight.Medium
+                                                            fontWeight = FontWeight.Medium,
+                                                            maxLines = 2,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                         )
                                                     }
                                                 }
@@ -1888,7 +1694,9 @@ fun HomeScreen(
                                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                                         color = Color.White,
                                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                        fontWeight = FontWeight.Bold
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false
                                                     )
                                                 }
                                             }
@@ -2105,18 +1913,6 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.height(2.dp))
 
                                     WidgetToggleRow(
-                                        title = "Quick Insights Stats Grid",
-                                        description = "Grid display of study hours, tasks count, focus scores, and current streak.",
-                                        checked = showStatsWidget.value,
-                                        onCheckedChange = { newVal ->
-                                            showStatsWidget.value = newVal
-                                            sharedPrefs.edit().putBoolean("show_stats_widget", newVal).apply()
-                                        }
-                                    )
-
-                                    Spacer(modifier = Modifier.height(2.dp))
-
-                                    WidgetToggleRow(
                                         title = "Daily Habits Quick Checklist",
                                         description = "Provides rapid tap completion for core active routine trackers.",
                                         checked = showHabitsWidget.value,
@@ -2152,17 +1948,7 @@ fun HomeScreen(
 
                                     Spacer(modifier = Modifier.height(2.dp))
 
-                                    WidgetToggleRow(
-                                        title = "AI Schedule Coach Insights",
-                                        description = "Personalized tips and suggestions powered by academic AI insights.",
-                                        checked = showAiInsightsWidget.value,
-                                        onCheckedChange = { newVal ->
-                                            showAiInsightsWidget.value = newVal
-                                            sharedPrefs.edit().putBoolean("show_ai_insights_widget", newVal).apply()
-                                        }
-                                    )
 
-                                    Spacer(modifier = Modifier.height(2.dp))
 
                                     WidgetToggleRow(
                                         title = "Today's Goals Checklist",
@@ -2277,14 +2063,21 @@ fun HomeScreen(
                                         modifier = Modifier.weight(1f).height(40.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                                         shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                        contentPadding = PaddingValues(horizontal = 4.dp)
                                     ) {
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text("⚡", fontSize = 12.sp)
-                                            Text("Load Demo", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                            Text(
+                                                text = "Load Demo",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
                                         }
                                     }
 
@@ -2296,14 +2089,21 @@ fun HomeScreen(
                                         modifier = Modifier.weight(1f).height(40.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.1f)),
                                         shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f))
+                                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
+                                        contentPadding = PaddingValues(horizontal = 4.dp)
                                     ) {
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text("🗑️", fontSize = 12.sp)
-                                            Text("Reset to Zero", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFFEF4444))
+                                            Text(
+                                                text = "Reset to Zero",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Color(0xFFEF4444),
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
                                         }
                                     }
                                 }

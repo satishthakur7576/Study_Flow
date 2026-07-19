@@ -649,6 +649,7 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         val dailyFocusHours = mutableListOf<Float>()
         val dailyTaskCompletionRates = mutableListOf<Float>()
         val dailyHabitConsistency = mutableListOf<Float>()
+        val dailyFocusScores = mutableListOf<Float>()
 
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
@@ -657,34 +658,58 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
 
             // Focus hours (duration divided by 60)
             val focusRecord = focus.find { it.dateString == dateStr }
-            val focusHrs = (focusRecord?.durationMinutes ?: 0) / 60f
+            val focusMinutesOnDay = focusRecord?.durationMinutes ?: 0
+            val focusHrs = focusMinutesOnDay / 60f
             dailyFocusHours.add(focusHrs)
 
             // Task completion rate (completed due on that day divided by total due on that day)
             val tasksDueOnDay = tasksList.filter { it.dueDate == dateStr }
-            val taskRate = if (tasksDueOnDay.isEmpty()) {
-                0f
-            } else {
-                val completedOnDay = tasksDueOnDay.count { it.completed }
-                (completedOnDay.toFloat() / tasksDueOnDay.size.toFloat()) * 100f
-            }
+            val hasTasks = tasksDueOnDay.isNotEmpty()
+            val completedOnDay = tasksDueOnDay.count { it.completed }
+            val taskRateFraction = if (hasTasks) completedOnDay.toFloat() / tasksDueOnDay.size.toFloat() else 0f
+            val taskRate = taskRateFraction * 100f
             dailyTaskCompletionRates.add(taskRate)
 
             // Habit consistency (percentage of active habits checked on this day)
             val activeCompletions = completionsList.filter { it.dateString == dateStr && (it.status == "COMPLETED" || it.status == null) }
-            val habitRate = if (habitsList.isEmpty()) {
-                0f
-            } else {
-                (activeCompletions.size.toFloat() / habitsList.size.toFloat()) * 100f
-            }
+            val totalHabitsCount = habitsList.size
+            val hasHabits = totalHabitsCount > 0
+            val habitRateFraction = if (hasHabits) activeCompletions.size.toFloat() / totalHabitsCount.toFloat() else 0f
+            val habitRate = habitRateFraction * 100f
             dailyHabitConsistency.add(habitRate)
+
+            // Dynamic daily Focus Score (overall productivity percentage) calculation
+            val weeklyGoalHours = _weeklyFocusGoalHours.value
+            val dailyGoalMinutes = if (weeklyGoalHours > 0) (weeklyGoalHours * 60) / 7 else 60
+            val focusFraction = if (dailyGoalMinutes > 0) {
+                (focusMinutesOnDay.toFloat() / dailyGoalMinutes).coerceAtMost(1f)
+            } else {
+                0f
+            }
+
+            val score = when {
+                hasTasks && hasHabits -> {
+                    (focusFraction * 40f) + (taskRateFraction * 30f) + (habitRateFraction * 30f)
+                }
+                hasTasks -> {
+                    (focusFraction * 50f) + (taskRateFraction * 50f)
+                }
+                hasHabits -> {
+                    (focusFraction * 50f) + (habitRateFraction * 50f)
+                }
+                else -> {
+                    focusFraction * 100f
+                }
+            }
+            dailyFocusScores.add(score.coerceIn(0f, 100f))
         }
 
         return WeeklyAnalyticsStats(
             days = dayNames,
             focusHours = dailyFocusHours,
             taskCompletionRates = dailyTaskCompletionRates,
-            habitConsistencyRates = dailyHabitConsistency
+            habitConsistencyRates = dailyHabitConsistency,
+            focusScores = dailyFocusScores
         )
     }
 
@@ -752,7 +777,8 @@ data class WeeklyAnalyticsStats(
     val days: List<String> = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
     val focusHours: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
     val taskCompletionRates: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
-    val habitConsistencyRates: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f)
+    val habitConsistencyRates: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
+    val focusScores: List<Float> = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f)
 )
 
 data class LifetimeAnalyticsStats(

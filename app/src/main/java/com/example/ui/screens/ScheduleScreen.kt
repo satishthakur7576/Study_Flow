@@ -196,7 +196,7 @@ fun ScheduleScreen(
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     items(classesOfSelectedDay, key = { it.id }) { classItem ->
                         ClassCard(
@@ -425,21 +425,15 @@ fun ClassCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "Attendance Rate",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                    )
+                Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "${classItem.attendedCount} / ${classItem.totalCount} Attended",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Attendance Rate",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                         )
                         Box(
                             modifier = Modifier
@@ -449,17 +443,30 @@ fun ClassCard(
                         ) {
                             Text(
                                 text = "%.0f%%".format(rate),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                 fontWeight = FontWeight.Bold,
-                                color = rateColor
+                                color = rateColor,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${classItem.attendedCount} / ${classItem.totalCount} Attended",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
+
+                Spacer(modifier = Modifier.width(6.dp))
 
                 // Interaction controls for recording attendance
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Reset Button
@@ -480,14 +487,21 @@ fun ClassCard(
                     // Skipped/Attended incrementers
                     TextButton(
                         onClick = onIncrementTotal,
-                        modifier = Modifier.testTag("skip_attendance_${classItem.id}")
+                        modifier = Modifier.testTag("skip_attendance_${classItem.id}"),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
                     ) {
-                        Text("Missed", color = HighPriorityColor, fontSize = 12.sp)
+                        Text(
+                            text = "Missed",
+                            color = HighPriorityColor,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     Button(
                         onClick = onIncrementAttended,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier
                             .height(32.dp)
                             .testTag("attend_class_${classItem.id}"),
@@ -500,7 +514,14 @@ fun ClassCard(
                             modifier = Modifier.size(12.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Attend", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Attend",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }

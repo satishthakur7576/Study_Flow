@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.StudyDatabase
 import com.example.data.StudyRepository
-import com.example.data.GeminiService
 import com.example.ui.StudyViewModel
 import com.example.ui.StudyViewModelFactory
 import com.example.ui.screens.*
@@ -388,15 +387,6 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                             }
                         },
                         actions = {
-                            // Sparkles: AI Coach assistant trigger
-                            IconButton(onClick = { showAiAssistant = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.TipsAndUpdates,
-                                    contentDescription = "AI Companion Guide",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
                             // Search: Command Palette trigger
                             IconButton(onClick = { showCommandPalette = true }) {
                                 Icon(
@@ -428,7 +418,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                     .fillMaxSize()
                     .padding(
                         top = innerPadding.calculateTopPadding(),
-                        bottom = if (selectedTab == AppTab.HOME) 0.dp else innerPadding.calculateBottomPadding()
+                        bottom = innerPadding.calculateBottomPadding()
                     ),
                 color = MaterialTheme.colorScheme.background
             ) {
@@ -512,7 +502,6 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                     if (query.isBlank()) {
                         val actions = listOf(
                             Pair("Start Pomodoro Timer ⏱️") { selectedTab = AppTab.TIMER; showCommandPalette = false },
-                            Pair("AI Companion Advice 🤖") { showAiAssistant = true; showCommandPalette = false },
                             Pair("Switch Theme Accent 🎨") { scope.launch { drawerState.open() }; showCommandPalette = false },
                             Pair("Toggle Dark / Light Mode 🌗") { viewModel.updateDarkTheme(!isDarkTheme); showCommandPalette = false }
                         )
@@ -582,200 +571,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
         }
     }
 
-    // --- GLOBAL OVERLAY 2: INTERACTIVE AI COMPANION (FocusBot) ---
-    if (showAiAssistant) {
-        var messageInput by remember { mutableStateOf("") }
-        var isThinking by remember { mutableStateOf(false) }
 
-        Dialog(onDismissRequest = { showAiAssistant = false }) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(500.dp)
-                    .clip(RoundedCornerShape(24.dp)),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Header
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(dynamicBrush),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(imageVector = Icons.Default.Bolt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            }
-                            Column {
-                                Text("FocusBot AI ✨", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("Your personal academic companion", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        IconButton(onClick = { showAiAssistant = false }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close AI Companion")
-                        }
-                    }
-
-                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    // Chat Log
-                    Box(modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp)
-                    ) {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            reverseLayout = false
-                        ) {
-                            items(aiChatHistory) { msg ->
-                                val alignment = if (msg.isUser) Alignment.End else Alignment.Start
-                                val containerColor = if (msg.isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                                val textColor = if (msg.isUser) Color.White else MaterialTheme.colorScheme.onSurface
-
-                                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(
-                                                RoundedCornerShape(
-                                                    topStart = 16.dp,
-                                                    topEnd = 16.dp,
-                                                    bottomStart = if (msg.isUser) 16.dp else 4.dp,
-                                                    bottomEnd = if (msg.isUser) 4.dp else 16.dp
-                                                )
-                                            )
-                                            .background(containerColor)
-                                            .padding(12.dp)
-                                            .widthIn(max = 240.dp)
-                                    ) {
-                                        Text(text = msg.text, style = MaterialTheme.typography.bodyMedium, color = textColor)
-                                    }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(text = msg.sender, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                                }
-                            }
-
-                            if (isThinking) {
-                                item {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                                        Text("FocusBot is framing insights...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Prompt Suggestions Row (If history is short)
-                    if (aiChatHistory.size < 4) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val prompts = listOf(
-                                "🔥 Analyze my habit streaks",
-                                "⏱️ Procrastination recovery plan",
-                                "📅 Review tomorrow's class schedule",
-                                "📝 Suggest assignment prioritization"
-                            )
-                            prompts.forEach { prompt ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                        .clickable {
-                                            messageInput = prompt.substring(2)
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(text = prompt, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
-
-                    // Input Send Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = messageInput,
-                            onValueChange = { messageInput = it },
-                            placeholder = { Text("Ask FocusBot anything...") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            maxLines = 2,
-                            singleLine = true
-                        )
-
-                        IconButton(
-                            onClick = {
-                                if (messageInput.isNotBlank()) {
-                                    val userText = messageInput
-                                    aiChatHistory.add(ChatMessage("You", userText, isUser = true))
-                                    messageInput = ""
-                                    isThinking = true
-
-                                    scope.launch {
-                                        val isConfigured = GeminiService.isApiKeyConfigured()
-                                        if (isConfigured) {
-                                            val chatHistoryList = aiChatHistory.map { it.sender to it.text }
-                                            val responseText = GeminiService.generateAcademicAdvice(
-                                                prompt = userText,
-                                                studentName = studentName,
-                                                todayFocusMinutes = todayFocusMinutes,
-                                                currentStreak = currentStreak,
-                                                tasksCompleted = tasks.count { it.completed },
-                                                tasksTotal = tasks.size,
-                                                totalHabits = habits.size,
-                                                totalClasses = classes.size,
-                                                chatHistory = chatHistoryList
-                                            )
-                                            if (responseText == "API_KEY_MISSING") {
-                                                val fallbackResponse = getSimulatedResponse(userText)
-                                                aiChatHistory.add(ChatMessage("FocusBot", fallbackResponse + "\n\n💡 *Note: FocusBot is running in offline demo mode. To unlock live AI feedback, enter your GEMINI_API_KEY in the AI Studio Secrets panel.*", isUser = false))
-                                            } else {
-                                                aiChatHistory.add(ChatMessage("FocusBot", responseText, isUser = false))
-                                            }
-                                        } else {
-                                            kotlinx.coroutines.delay(1000)
-                                            val fallbackResponse = getSimulatedResponse(userText)
-                                            aiChatHistory.add(ChatMessage("FocusBot", fallbackResponse + "\n\n💡 *Note: FocusBot is running in offline demo mode. To unlock live AI feedback, enter your GEMINI_API_KEY in the AI Studio Secrets panel.*", isUser = false))
-                                        }
-                                        isThinking = false
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        ) {
-                            Icon(imageVector = Icons.Default.Send, contentDescription = "Send message", tint = Color.White)
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // --- GLOBAL OVERLAY 3: SYSTEM NOTIFICATION CENTER ---
     if (showNotifications) {
