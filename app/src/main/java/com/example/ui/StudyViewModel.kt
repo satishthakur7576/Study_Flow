@@ -89,6 +89,66 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         _weeklyFocusGoalHours.value = hours
     }
 
+    // --- Customizable Daily Study Goal (Hours) ---
+    private val _dailyFocusGoalHours = MutableStateFlow(sharedPrefs.getInt("daily_focus_goal", 4))
+    val dailyFocusGoalHours: StateFlow<Int> = _dailyFocusGoalHours.asStateFlow()
+
+    fun updateDailyFocusGoal(hours: Int) {
+        sharedPrefs.edit().putInt("daily_focus_goal", hours).apply()
+        _dailyFocusGoalHours.value = hours
+    }
+
+    // --- Google Account / Cloud Sync ---
+    private val _googleUserEmail = MutableStateFlow(sharedPrefs.getString("google_user_email", null))
+    val googleUserEmail: StateFlow<String?> = _googleUserEmail.asStateFlow()
+
+    private val _googleUserName = MutableStateFlow(sharedPrefs.getString("google_user_name", null))
+    val googleUserName: StateFlow<String?> = _googleUserName.asStateFlow()
+
+    private val _googleUserPhoto = MutableStateFlow(sharedPrefs.getString("google_user_photo", null))
+    val googleUserPhoto: StateFlow<String?> = _googleUserPhoto.asStateFlow()
+
+    private val _isGoogleSignedIn = MutableStateFlow(sharedPrefs.getBoolean("is_google_signed_in", false))
+    val isGoogleSignedIn: StateFlow<Boolean> = _isGoogleSignedIn.asStateFlow()
+
+    private val _lastCloudSyncTime = MutableStateFlow(sharedPrefs.getLong("last_cloud_sync_time", 0L))
+    val lastCloudSyncTime: StateFlow<Long> = _lastCloudSyncTime.asStateFlow()
+
+    fun signInWithGoogle(email: String, name: String, photoUrl: String? = null) {
+        sharedPrefs.edit()
+            .putString("google_user_email", email)
+            .putString("google_user_name", name)
+            .putString("google_user_photo", photoUrl)
+            .putBoolean("is_google_signed_in", true)
+            .apply()
+        _googleUserEmail.value = email
+        _googleUserName.value = name
+        _googleUserPhoto.value = photoUrl
+        _isGoogleSignedIn.value = true
+        
+        val nameToUse = name.ifBlank { email.substringBefore("@").replaceFirstChar { it.uppercase() } }
+        updateStudentName(nameToUse)
+    }
+
+    fun signOutFromGoogle() {
+        sharedPrefs.edit()
+            .remove("google_user_email")
+            .remove("google_user_name")
+            .remove("google_user_photo")
+            .putBoolean("is_google_signed_in", false)
+            .apply()
+        _googleUserEmail.value = null
+        _googleUserName.value = null
+        _googleUserPhoto.value = null
+        _isGoogleSignedIn.value = false
+    }
+
+    fun updateLastCloudSyncTime() {
+        val now = System.currentTimeMillis()
+        sharedPrefs.edit().putLong("last_cloud_sync_time", now).apply()
+        _lastCloudSyncTime.value = now
+    }
+
     // --- Dynamic Date Tracking for Adaptive Resetting ---
     private val _todayDateString = MutableStateFlow(getTodayDateString())
     val todayDateString: StateFlow<String> = _todayDateString.asStateFlow()
@@ -370,10 +430,12 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
             // Reset other SharedPreferences stats
             sharedPrefs.edit()
                 .putInt("weekly_focus_goal", 10)
+                .putInt("daily_focus_goal", 4)
                 .putInt("focus_duration_minutes", 25)
                 .putInt("break_duration_minutes", 5)
                 .apply()
             _weeklyFocusGoalHours.value = 10
+            _dailyFocusGoalHours.value = 4
             _focusDurationMinutes.value = 25
             _breakDurationMinutes.value = 5
             _timerSecondsLeft.value = 25 * 60

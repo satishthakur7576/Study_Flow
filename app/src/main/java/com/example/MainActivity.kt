@@ -423,7 +423,10 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                 color = MaterialTheme.colorScheme.background
             ) {
                 when (selectedTab) {
-                    AppTab.HOME -> HomeScreen(viewModel = viewModel)
+                    AppTab.HOME -> HomeScreen(
+                        viewModel = viewModel,
+                        onNavigateToTimer = { selectedTab = AppTab.TIMER }
+                    )
                     AppTab.ANALYTICS -> AnalyticsScreen(viewModel = viewModel)
                     AppTab.TASKS -> TaskScreen(viewModel = viewModel)
                     AppTab.TIMER -> TimerScreen(viewModel = viewModel)

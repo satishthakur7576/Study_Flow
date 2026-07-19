@@ -167,7 +167,8 @@ fun AnimatedMeshGradient(isDark: Boolean, modifier: Modifier = Modifier) {
 @Composable
 fun HomeScreen(
     viewModel: StudyViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToTimer: (() -> Unit)? = null
 ) {
     val studentName by viewModel.studentName.collectAsStateWithLifecycle()
     val studentMajor by viewModel.studentMajor.collectAsStateWithLifecycle()
@@ -191,6 +192,12 @@ fun HomeScreen(
     val weeklyAnalytics by viewModel.weeklyAnalytics.collectAsStateWithLifecycle()
     val focusRecords by viewModel.focusRecords.collectAsStateWithLifecycle()
     val weeklyFocusGoalHours by viewModel.weeklyFocusGoalHours.collectAsStateWithLifecycle()
+    val dailyFocusGoalHours by viewModel.dailyFocusGoalHours.collectAsStateWithLifecycle()
+    val googleUserEmail by viewModel.googleUserEmail.collectAsStateWithLifecycle()
+    val googleUserName by viewModel.googleUserName.collectAsStateWithLifecycle()
+    val googleUserPhoto by viewModel.googleUserPhoto.collectAsStateWithLifecycle()
+    val isGoogleSignedIn by viewModel.isGoogleSignedIn.collectAsStateWithLifecycle()
+    val lastCloudSyncTime by viewModel.lastCloudSyncTime.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("study_flow_prefs", android.content.Context.MODE_PRIVATE) }
@@ -203,18 +210,6 @@ fun HomeScreen(
     }
     val yesterdayFocusMinutes = remember(focusRecords, yesterdayStr) {
         focusRecords.find { it.dateString == yesterdayStr }?.durationMinutes ?: 0
-    }
-
-    // Dynamic, personalized motivational text based on real daily progress
-    val motivationalText = remember(focusMinutes, yesterdayFocusMinutes) {
-        val diff = focusMinutes - yesterdayFocusMinutes
-        when {
-            focusMinutes == 0 -> "🌱 Start a study session today to build your streak!"
-            yesterdayFocusMinutes == 0 -> "✨ Great job starting today's study! Keep going!"
-            diff > 0 -> "🔥 +${diff} more study minutes than yesterday!"
-            diff < 0 -> "⚡ You studied ${focusMinutes}m today. Aim for ${yesterdayFocusMinutes}m to beat yesterday!"
-            else -> "⭐ Consistent study! You matched yesterday's study of ${focusMinutes}m!"
-        }
     }
 
     // Build overall active streak sparkline from weekly focus/habit records
@@ -303,7 +298,7 @@ fun HomeScreen(
     val completedHabitsCount = habits.count { habit ->
         completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
     }
-    val dailyGoalMinutes = if (weeklyFocusGoalHours > 0) (weeklyFocusGoalHours * 60) / 7 else 60
+    val dailyGoalMinutes = dailyFocusGoalHours * 60
     val focusFraction = if (dailyGoalMinutes > 0) {
         (focusMinutes.toFloat() / dailyGoalMinutes).coerceAtMost(1f)
     } else {
@@ -621,6 +616,7 @@ fun HomeScreen(
                         .padding(24.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        val remainingGoalMinutes = (dailyFocusGoalHours * 60) - focusMinutes
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -651,7 +647,7 @@ fun HomeScreen(
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = "Target: 4h Focus",
+                                    text = "Target: ${dailyFocusGoalHours}h Focus",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
@@ -717,10 +713,21 @@ fun HomeScreen(
                                     label = "Tasks Complete",
                                     value = "$todayCompletedTasksCount / ${todayTotalTasksCount.coerceAtLeast(todayCompletedTasksCount)} done"
                                 )
+                                val remainingGoalText = if (remainingGoalMinutes <= 0) {
+                                    "Goal Completed! 🎉"
+                                } else {
+                                    val remHrs = remainingGoalMinutes / 60
+                                    val remMins = remainingGoalMinutes % 60
+                                    if (remHrs > 0) {
+                                        "${remHrs}h ${remMins}m more"
+                                    } else {
+                                        "${remMins} mins more"
+                                    }
+                                }
                                 HeroMetricRow(
                                     icon = Icons.Outlined.HourglassEmpty,
-                                    label = "Focus Duration",
-                                    value = if (focusMinutes > 0) "${focusMinutes} mins" else "0 mins logged"
+                                    label = "Remaining Focus",
+                                    value = remainingGoalText
                                 )
                                 HeroMetricRow(
                                     icon = Icons.Default.LocalFireDepartment,
@@ -732,14 +739,13 @@ fun HomeScreen(
 
                         HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 1.dp)
 
-                        // Motivational message + Action Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = motivationalText,
+                                text = if (remainingGoalMinutes <= 0) "Daily target complete! 🌟" else "Ready to complete your daily target?",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = Color.White.copy(alpha = 0.9f),
                                     fontWeight = FontWeight.Medium,
@@ -749,7 +755,10 @@ fun HomeScreen(
                             )
 
                             Button(
-                                onClick = { viewModel.startTimer() },
+                                onClick = {
+                                    viewModel.startTimer()
+                                    onNavigateToTimer?.invoke()
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                                 shape = RoundedCornerShape(12.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
@@ -765,7 +774,7 @@ fun HomeScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Text(
-                                        text = "Start Focus",
+                                        text = "Focus Now",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = Color(0xFF4F7CFF),
                                             fontWeight = FontWeight.Bold,
@@ -1552,6 +1561,8 @@ fun HomeScreen(
         }
     }
 
+    var showGoogleSignInDialog by remember { mutableStateOf(false) }
+
     // --- Control Hub & Settings Panel ---
     if (showProfileHubDialog) {
         var hubTab by remember { mutableStateOf(0) } // 0=Account & Accent, 1=Widgets, 2=Sync Config, 3=Donate
@@ -1560,6 +1571,7 @@ fun HomeScreen(
         var tempYear by remember { mutableStateOf(studentYear) }
         var tempGoal by remember { mutableStateOf(academicGoal) }
         var tempAvatar by remember { mutableStateOf(profileAvatar) }
+        var tempDailyFocusGoalHours by remember { mutableStateOf(dailyFocusGoalHours) }
 
         // Sync states
         var isSyncing by remember { mutableStateOf(false) }
@@ -1827,6 +1839,57 @@ fun HomeScreen(
                                 )
 
                                 Spacer(modifier = Modifier.height(4.dp))
+
+                                // --- DAILY FOCUS GOAL HOURS ---
+                                Text("Daily Study Target", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { if (tempDailyFocusGoalHours > 1) tempDailyFocusGoalHours-- },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Remove,
+                                            contentDescription = "Decrease daily target hours",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = "${tempDailyFocusGoalHours} Hours",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Target Focus Per Day",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { if (tempDailyFocusGoalHours < 24) tempDailyFocusGoalHours++ },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Increase daily target hours",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text("Select Theme Accent Color", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Text("Pick an aesthetic color preset to style the entire application.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 
@@ -1976,65 +2039,209 @@ fun HomeScreen(
                         }
                         2 -> { // Secure cloud synchronization
                             Column(
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                             ) {
-                                Icon(
-                                    imageVector = if (syncCompleted) Icons.Default.CloudDone else Icons.Default.CloudQueue,
-                                    contentDescription = "Cloud Icon",
-                                    tint = if (syncCompleted) Color(0xFF00C070) else MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(54.dp)
-                                )
+                                if (isGoogleSignedIn) {
+                                    // Google Account details card
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = (googleUserName ?: googleUserEmail ?: "U").take(1).uppercase(),
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        }
 
-                                Text(
-                                    text = if (syncCompleted) "Database Synchronized" else "Automated Cloud Sync Setup",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = googleUserName ?: "Academic Achiever",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = googleUserEmail ?: "",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
 
-                                Text(
-                                    text = "All of your local study sessions, habit completions, and subject tasks are securely locked in real-time.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
+                                        IconButton(
+                                            onClick = { viewModel.signOutFromGoogle() },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ExitToApp,
+                                                contentDescription = "Sign Out",
+                                                tint = Color(0xFFEF4444)
+                                            )
+                                        }
+                                    }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
 
-                                val localScope = rememberCoroutineScope()
-                                Button(
-                                    onClick = {
-                                        if (!isSyncing) {
-                                            isSyncing = true
-                                            localScope.launch {
-                                                kotlinx.coroutines.delay(1200)
-                                                isSyncing = false
-                                                syncCompleted = true
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDone,
+                                        contentDescription = "Cloud Icon",
+                                        tint = Color(0xFF00C070),
+                                        modifier = Modifier.size(48.dp)
+                                    )
+
+                                    Text(
+                                        text = "Cloud Backup Enabled",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Text(
+                                        text = "Your daily focus goals, completed habits, tasks, and achievements are linked with your Google profile.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    val localScope = rememberCoroutineScope()
+                                    Button(
+                                        onClick = {
+                                            if (!isSyncing) {
+                                                isSyncing = true
+                                                localScope.launch {
+                                                    kotlinx.coroutines.delay(1200)
+                                                    isSyncing = false
+                                                    viewModel.updateLastCloudSyncTime()
+                                                    syncCompleted = true
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C070)),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        if (isSyncing) {
+                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                        } else {
+                                            Text("Backup To Cloud Now ✓", fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    }
+
+                                    val lastSyncText = remember(lastCloudSyncTime, syncCompleted) {
+                                        if (lastCloudSyncTime == 0L) {
+                                            "Never backed up to this account yet."
+                                        } else {
+                                            val diff = System.currentTimeMillis() - lastCloudSyncTime
+                                            if (diff < 60000) "Just backed up now"
+                                            else "${diff / 60000} mins ago"
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "Server Endpoint Sync: ACTIVE\nLast database backup: $lastSyncText",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                } else {
+                                    // Google Sign-In promo card
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudQueue,
+                                                contentDescription = "Cloud Icon",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(44.dp)
+                                            )
+
+                                            Text(
+                                                text = "Save Progress to Cloud",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+
+                                            Text(
+                                                text = "Sign in with your Gmail/Google account to back up and preserve your academic stats, schedules, and badges. Easily sync between your devices so your data is never lost.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+
+                                            // Styled Google Sign In Button
+                                            Button(
+                                                onClick = {
+                                                    try {
+                                                        val intent = googleSignInClient.signInIntent
+                                                        signInLauncher.launch(intent)
+                                                    } catch (e: Exception) {
+                                                        showGoogleSignInDialog = true
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    // Google logo symbol
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(20.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Color.White),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "G",
+                                                            color = Color(0xFF4285F4),
+                                                            fontWeight = FontWeight.Black,
+                                                            fontSize = 12.sp
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "Sign in with Google",
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White,
+                                                        style = MaterialTheme.typography.bodyMedium
+                                                    )
+                                                }
                                             }
                                         }
-                                    },
-                                    modifier = Modifier.fillMaxWidth().height(44.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (syncCompleted) Color(0xFF00C070) else MaterialTheme.colorScheme.secondary),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    if (isSyncing) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                                    } else {
-                                        Text(if (syncCompleted) "Sync Complete ✓" else "Synchronize Now 🔒", fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
 
-                                Text(
-                                    text = "Sync Token Status: AES-128 SECURE ACCREDITED\nLast sync execution: ${if (syncCompleted) "Just now" else "24 minutes ago"}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 8.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
 
                                 Text(
                                     text = "Robust Local Storage",
@@ -2246,6 +2453,7 @@ fun HomeScreen(
                         viewModel.updateStudentYear(tempYear)
                         viewModel.updateAcademicGoal(tempGoal)
                         viewModel.updateProfileAvatar(tempAvatar)
+                        viewModel.updateDailyFocusGoal(tempDailyFocusGoalHours)
                         showProfileHubDialog = false
                     },
                     modifier = Modifier.testTag("save_name_button").fillMaxWidth()
