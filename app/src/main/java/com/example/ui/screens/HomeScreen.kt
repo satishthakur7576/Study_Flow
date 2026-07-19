@@ -170,6 +170,10 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val studentName by viewModel.studentName.collectAsStateWithLifecycle()
+    val studentMajor by viewModel.studentMajor.collectAsStateWithLifecycle()
+    val studentYear by viewModel.studentYear.collectAsStateWithLifecycle()
+    val academicGoal by viewModel.academicGoal.collectAsStateWithLifecycle()
+    val profileAvatar by viewModel.profileAvatar.collectAsStateWithLifecycle()
     val todayDate by viewModel.todayDisplayDate.collectAsStateWithLifecycle()
     val todayStr by viewModel.todayDateString.collectAsStateWithLifecycle()
     
@@ -183,14 +187,60 @@ fun HomeScreen(
     val overallAttendance by viewModel.overallAttendancePercentage.collectAsStateWithLifecycle()
     val streakCount by viewModel.currentStreak.collectAsStateWithLifecycle()
     val activeTheme by viewModel.themeAccent.collectAsStateWithLifecycle()
+    val weeklyAnalytics by viewModel.weeklyAnalytics.collectAsStateWithLifecycle()
+    val focusRecords by viewModel.focusRecords.collectAsStateWithLifecycle()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("study_flow_prefs", android.content.Context.MODE_PRIVATE) }
 
-    // Control toggles for dynamic widgets
-    val showStreakWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_streak", true)) }
-    val showClassBanner = remember { mutableStateOf(sharedPrefs.getBoolean("show_class_banner", true)) }
+    // Calculate yesterday's date and study minutes
+    val yesterdayStr = remember(todayStr) {
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, -1)
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(cal.time)
+    }
+    val yesterdayFocusMinutes = remember(focusRecords, yesterdayStr) {
+        focusRecords.find { it.dateString == yesterdayStr }?.durationMinutes ?: 0
+    }
+
+    // Dynamic, personalized motivational text based on real daily progress
+    val motivationalText = remember(focusMinutes, yesterdayFocusMinutes) {
+        val diff = focusMinutes - yesterdayFocusMinutes
+        when {
+            focusMinutes == 0 -> "🌱 Start a study session today to build your streak!"
+            yesterdayFocusMinutes == 0 -> "✨ Great job starting today's study! Keep going!"
+            diff > 0 -> "🔥 +${diff} more study minutes than yesterday!"
+            diff < 0 -> "⚡ You studied ${focusMinutes}m today. Aim for ${yesterdayFocusMinutes}m to beat yesterday!"
+            else -> "⭐ Consistent study! You matched yesterday's study of ${focusMinutes}m!"
+        }
+    }
+
+    // Build overall active streak sparkline from weekly focus/habit records
+    val streakSparkline = remember(weeklyAnalytics) {
+        val points = mutableListOf<Float>()
+        var running = 0f
+        for (i in 0 until 7) {
+            val hasFocus = (weeklyAnalytics.focusHours.getOrNull(i) ?: 0f) > 0f
+            val hasHabit = (weeklyAnalytics.habitConsistencyRates.getOrNull(i) ?: 0f) > 0f
+            if (hasFocus || hasHabit) {
+                running += 1f
+            } else {
+                running = 0f
+            }
+            points.add(running)
+        }
+        points
+    }
+
+    // Control toggles for dynamic widgets matching all Home Screen sections
+    val showHeroWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_hero_widget", true)) }
+    val showStatsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_stats_widget", true)) }
     val showHabitsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_habits_widget", true)) }
+    val showScheduleWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_schedule_widget", true)) }
+    val showTimerWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_timer_widget", true)) }
+    val showAiInsightsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_ai_insights_widget", true)) }
+    val showGoalsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_goals_widget", true)) }
+    val showAchievementsWidget = remember { mutableStateOf(sharedPrefs.getBoolean("show_achievements_widget", true)) }
 
     var showProfileHubDialog by remember { mutableStateOf(false) }
     var showManualLogsDialog by remember { mutableStateOf(false) }
@@ -235,13 +285,19 @@ fun HomeScreen(
     val completedHabitsCount = habits.count { habit ->
         completions.any { it.habitId == habit.id && it.dateString == todayStr && (it.status == "COMPLETED" || it.status == null) }
     }
-
-    val taskRate = if (todayTotalTasksCount > 0) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 1f
-    val habitRate = if (totalHabitsCount > 0) completedHabitsCount.toFloat() / totalHabitsCount.toFloat() else 1f
+    val taskRate = if (todayTotalTasksCount > 0) todayCompletedTasksCount.toFloat() / todayTotalTasksCount.toFloat() else 0f
+    val habitRate = if (totalHabitsCount > 0) completedHabitsCount.toFloat() / totalHabitsCount.toFloat() else 0f
     val overallProductivityPercentage = if (todayTotalTasksCount == 0 && totalHabitsCount == 0) {
-        85 // beautiful aesthetic fallback default
+        if (focusMinutes > 0) {
+            (focusMinutes * 2).coerceIn(10, 100)
+        } else {
+            0
+        }
     } else {
-        (((taskRate + habitRate) / 2f) * 100).toInt().coerceIn(15, 100)
+        val taskWeight = if (todayTotalTasksCount > 0) taskRate else 0f
+        val habitWeight = if (totalHabitsCount > 0) habitRate else 0f
+        val divider = if (todayTotalTasksCount > 0 && totalHabitsCount > 0) 2f else 1f
+        (((taskWeight + habitWeight) / divider) * 100).toInt().coerceIn(0, 100)
     }
 
     BoxWithConstraints(
@@ -276,7 +332,7 @@ fun HomeScreen(
                     .fillMaxHeight()
                     .widthIn(max = 680.dp)
                     .testTag("home_screen"),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 160.dp),
                 verticalArrangement = Arrangement.spacedBy(itemSpacing)
             ) {
                 // --- 1. THE ULTIMATE HEADER ---
@@ -286,124 +342,199 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .padding(horizontal = screenPadding)
                             .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = greetingPeriod,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B)
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Keep Going, $studentName 💪",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                            letterSpacing = (-1).sp
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.CalendarMonth,
-                            contentDescription = null,
-                            tint = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = todayDate,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 12.sp,
-                                color = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
-                                fontWeight = FontWeight.SemiBold
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = greetingPeriod,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isDarkThemeActive) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                )
                             )
-                        )
-                    }
-                }
-
-                // Interactive icons matching Linear / Arc design
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Search button triggers manual logging / dialog
-                    IconButton(
-                        onClick = { showManualLogsDialog = true },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
-                            .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "Quick Search Actions",
-                            tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Notification Icon with glowing indicator
-                    Box {
-                        IconButton(
-                            onClick = { /* visual action handled globally */ },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
-                                .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Notifications,
-                                contentDescription = "Notifications",
-                                tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                                modifier = Modifier.size(20.dp)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Keep Going, $studentName 💪",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontSize = if (isTablet) 28.sp else 21.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                    letterSpacing = (-0.5).sp
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = todayDate,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        color = if (isDarkThemeActive) Color(0xFF64748B) else Color(0xFF94A3B8),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Live Focus Stat Chip
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isDarkThemeActive) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("⏱️", fontSize = 11.sp)
+                                        Text(
+                                            text = "${focusMinutes}m Today",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkThemeActive) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                                            )
+                                        )
+                                    }
+                                }
+
+                                // Live Streak Stat Chip
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isDarkThemeActive) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("🔥", fontSize = 11.sp)
+                                        Text(
+                                            text = "$streakCount ${if (streakCount == 1) "Day" else "Days"}",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkThemeActive) Color(0xFFFBBF24) else Color(0xFFD97706)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        // Soft green notification bubble
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 2.dp)
-                        )
-                    }
 
-                    // Beautiful premium Initials Profile Avatar
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED))))
-                            .clickable { showProfileHubDialog = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = initials,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 14.sp
-                            )
-                        )
+                        // Interactive icons matching Linear / Arc design
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Search button triggers manual logging / dialog
+                            IconButton(
+                                onClick = { showManualLogsDialog = true },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
+                                    .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Search,
+                                    contentDescription = "Quick Search Actions",
+                                    tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Notification Icon with glowing indicator
+                            Box {
+                                IconButton(
+                                    onClick = { /* visual action handled globally */ },
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
+                                        .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Notifications,
+                                        contentDescription = "Notifications",
+                                        tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                // Soft green notification bubble
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = (-1).dp, y = 1.dp)
+                                )
+                            }
+
+                            // Overlapping custom avatar with badge indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clickable { showProfileHubDialog = true }
+                            ) {
+                                // Initials Circle
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(Brush.linearGradient(listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED)))),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = initials,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            fontSize = 13.sp
+                                        )
+                                    )
+                                }
+                                // Small badge emoji overlapping
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .align(Alignment.BottomEnd)
+                                        .offset(x = 2.dp, y = 2.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = profileAvatar,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        // --- 2. MAJESTIC PRODUCTIVITY HERO CARD ---
-        item {
+                // --- 2. MAJESTIC PRODUCTIVITY HERO CARD ---
+        if (showHeroWidget.value) {
+            item {
             val progressAnimated by animateFloatAsState(
                 targetValue = overallProductivityPercentage.toFloat() / 100f,
                 animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
@@ -552,7 +683,7 @@ fun HomeScreen(
                                 HeroMetricRow(
                                     icon = Icons.Default.LocalFireDepartment,
                                     label = "Active Streak",
-                                    value = "${if (streakCount > 0) streakCount else 10} Days Active"
+                                    value = "$streakCount Days Active"
                                 )
                             }
                         }
@@ -566,7 +697,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🔥 +15% more focused study than yesterday!",
+                                text = motivationalText,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = Color.White.copy(alpha = 0.9f),
                                     fontWeight = FontWeight.Medium,
@@ -608,7 +739,8 @@ fun HomeScreen(
         }
 
         // --- 3. PREMIUM QUICK STATS GRID ---
-        item {
+        if (showStatsWidget.value) {
+            item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -636,9 +768,9 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
                             label = "Study Hours",
-                            trend = "+12% vs last week",
-                            trendPositive = true,
-                            sparklinePoints = listOf(10f, 25f, 15f, 40f, focusMinutes.toFloat().coerceAtLeast(10f), 30f, 45f),
+                            trend = "${focusMinutes}m focused today",
+                            trendPositive = focusMinutes >= yesterdayFocusMinutes,
+                            sparklinePoints = weeklyAnalytics.focusHours.map { it.coerceAtLeast(0f) },
                             icon = Icons.Outlined.HourglassEmpty,
                             isDark = isDarkThemeActive
                         )
@@ -646,29 +778,29 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             value = "$todayCompletedTasksCount/$todayTotalTasksCount",
                             label = "Today's Tasks",
-                            trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "100% free",
-                            trendPositive = todayCompletedTasksCount == todayTotalTasksCount,
-                            sparklinePoints = listOf(1f, 3f, 2f, 4f, todayCompletedTasksCount.toFloat().coerceAtLeast(1f)),
+                            trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "0 tasks today",
+                            trendPositive = todayCompletedTasksCount > 0 || todayTotalTasksCount == 0,
+                            sparklinePoints = weeklyAnalytics.taskCompletionRates,
                             icon = Icons.Outlined.CheckCircle,
                             isDark = isDarkThemeActive
                         )
                         PremiumStatCard(
                             modifier = Modifier.weight(1f),
-                            value = "${(overallProductivityPercentage * 0.9 + 10).toInt()}/100",
+                            value = "$overallProductivityPercentage/100",
                             label = "Focus Score",
-                            trend = "Excellent 🧠",
-                            trendPositive = true,
-                            sparklinePoints = listOf(60f, 75f, 70f, 85f, overallProductivityPercentage.toFloat(), 80f, 95f),
+                            trend = if (overallProductivityPercentage >= 80) "Excellent 🧠" else if (overallProductivityPercentage >= 50) "Good Progress ⚡" else if (overallProductivityPercentage > 0) "Getting Started 🌱" else "No activity yet 💤",
+                            trendPositive = overallProductivityPercentage >= 50,
+                            sparklinePoints = weeklyAnalytics.habitConsistencyRates.mapIndexed { idx, rate -> (rate + (weeklyAnalytics.focusHours.getOrElse(idx) { 0f } * 10f)).coerceAtMost(100f) },
                             icon = Icons.Outlined.Bolt,
                             isDark = isDarkThemeActive
                         )
                         PremiumStatCard(
                             modifier = Modifier.weight(1f),
-                            value = "${if (streakCount > 0) streakCount else 10} Days",
+                            value = "$streakCount ${if (streakCount == 1) "Day" else "Days"}",
                             label = "Current Streak",
-                            trend = "Active Streak 🔥",
-                            trendPositive = true,
-                            sparklinePoints = listOf(1f, 3f, 4f, 6f, 8f, 9f, streakCount.toFloat().coerceAtLeast(10f)),
+                            trend = if (streakCount > 0) "Active Streak 🔥" else "Start a streak! 💪",
+                            trendPositive = streakCount > 0,
+                            sparklinePoints = streakSparkline,
                             icon = Icons.Outlined.LocalFireDepartment,
                             isDark = isDarkThemeActive
                         )
@@ -685,9 +817,9 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                                 value = if (totalHrs > 0) "${totalHrs}h ${totalMins}m" else "${totalMins}m",
                                 label = "Study Hours",
-                                trend = "+12% vs last week",
-                                trendPositive = true,
-                                sparklinePoints = listOf(10f, 25f, 15f, 40f, focusMinutes.toFloat().coerceAtLeast(10f), 30f, 45f),
+                                trend = "${focusMinutes}m focused today",
+                                trendPositive = focusMinutes >= yesterdayFocusMinutes,
+                                sparklinePoints = weeklyAnalytics.focusHours.map { it.coerceAtLeast(0f) },
                                 icon = Icons.Outlined.HourglassEmpty,
                                 isDark = isDarkThemeActive
                             )
@@ -695,9 +827,9 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                                 value = "$todayCompletedTasksCount/$todayTotalTasksCount",
                                 label = "Today's Tasks",
-                                trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "100% free",
-                                trendPositive = todayCompletedTasksCount == todayTotalTasksCount,
-                                sparklinePoints = listOf(1f, 3f, 2f, 4f, todayCompletedTasksCount.toFloat().coerceAtLeast(1f)),
+                                trend = if (todayTotalTasksCount > 0) "${(todayCompletedTasksCount * 100 / todayTotalTasksCount)}% complete" else "0 tasks today",
+                                trendPositive = todayCompletedTasksCount > 0 || todayTotalTasksCount == 0,
+                                sparklinePoints = weeklyAnalytics.taskCompletionRates,
                                 icon = Icons.Outlined.CheckCircle,
                                 isDark = isDarkThemeActive
                             )
@@ -708,21 +840,21 @@ fun HomeScreen(
                         ) {
                             PremiumStatCard(
                                 modifier = Modifier.weight(1f),
-                                value = "${(overallProductivityPercentage * 0.9 + 10).toInt()}/100",
+                                value = "$overallProductivityPercentage/100",
                                 label = "Focus Score",
-                                trend = "Excellent 🧠",
-                                trendPositive = true,
-                                sparklinePoints = listOf(60f, 75f, 70f, 85f, overallProductivityPercentage.toFloat(), 80f, 95f),
+                                trend = if (overallProductivityPercentage >= 80) "Excellent 🧠" else if (overallProductivityPercentage >= 50) "Good Progress ⚡" else if (overallProductivityPercentage > 0) "Getting Started 🌱" else "No activity yet 💤",
+                                trendPositive = overallProductivityPercentage >= 50,
+                                sparklinePoints = weeklyAnalytics.habitConsistencyRates.mapIndexed { idx, rate -> (rate + (weeklyAnalytics.focusHours.getOrElse(idx) { 0f } * 10f)).coerceAtMost(100f) },
                                 icon = Icons.Outlined.Bolt,
                                 isDark = isDarkThemeActive
                             )
                             PremiumStatCard(
                                 modifier = Modifier.weight(1f),
-                                value = "${if (streakCount > 0) streakCount else 10} Days",
+                                value = "$streakCount ${if (streakCount == 1) "Day" else "Days"}",
                                 label = "Current Streak",
-                                trend = "Active Streak 🔥",
-                                trendPositive = true,
-                                sparklinePoints = listOf(1f, 3f, 4f, 6f, 8f, 9f, streakCount.toFloat().coerceAtLeast(10f)),
+                                trend = if (streakCount > 0) "Active Streak 🔥" else "Start a streak! 💪",
+                                trendPositive = streakCount > 0,
+                                sparklinePoints = streakSparkline,
                                 icon = Icons.Outlined.LocalFireDepartment,
                                 isDark = isDarkThemeActive
                             )
@@ -731,10 +863,11 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 4. TODAY'S HABITS WIDGET ---
-        item {
-            if (showHabitsWidget.value) {
+        if (showHabitsWidget.value) {
+            item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -802,10 +935,12 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 5. TODAY'S SCHEDULE TIMELINE ---
-        item {
-            Column(
+        if (showScheduleWidget.value) {
+            item {
+                Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = screenPadding),
@@ -979,9 +1114,11 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 6. FOCUS SESSION TIMER WIDGET ---
-        item {
+        if (showTimerWidget.value) {
+            item {
             val timerIsRunning by viewModel.timerIsRunning.collectAsStateWithLifecycle()
             val secondsLeft by viewModel.timerSecondsLeft.collectAsStateWithLifecycle()
             val isBreakMode by viewModel.isBreakMode.collectAsStateWithLifecycle()
@@ -1160,10 +1297,12 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 7. PREMIUM AI INSIGHTS CARD ---
-        item {
-            Column(
+        if (showAiInsightsWidget.value) {
+            item {
+                Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = screenPadding),
@@ -1202,6 +1341,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
+                                modifier = Modifier.weight(1f),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -1215,9 +1355,13 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDarkThemeActive) Color.White else Color(0xFF0F172A)
-                                    )
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             Box(
                                 modifier = Modifier
@@ -1271,10 +1415,12 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 8. TODAY'S GOALS CHECKLIST ---
-        item {
-            Column(
+        if (showGoalsWidget.value) {
+            item {
+                Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = screenPadding),
@@ -1474,10 +1620,12 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // --- 9. ACHIEVEMENTS MILESTONES (HORIZONTAL SCROLL) ---
-        item {
-            Column(
+        if (showAchievementsWidget.value) {
+            item {
+                Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -1598,6 +1746,7 @@ fun HomeScreen(
                 }
             }
         }
+        }
             }
         }
     }
@@ -1606,6 +1755,10 @@ fun HomeScreen(
     if (showProfileHubDialog) {
         var hubTab by remember { mutableStateOf(0) } // 0=Account & Accent, 1=Widgets, 2=Sync Config, 3=Donate
         var tempName by remember { mutableStateOf(studentName) }
+        var tempMajor by remember { mutableStateOf(studentMajor) }
+        var tempYear by remember { mutableStateOf(studentYear) }
+        var tempGoal by remember { mutableStateOf(academicGoal) }
+        var tempAvatar by remember { mutableStateOf(profileAvatar) }
 
         // Sync states
         var isSyncing by remember { mutableStateOf(false) }
@@ -1660,7 +1813,165 @@ fun HomeScreen(
                     // SHEETS DISPLAY
                     when (hubTab) {
                         0 -> { // Profile & Accent customization
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 340.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // --- DIGITAL ID CARD PREVIEW ---
+                                val cardBg = when (activeTheme) {
+                                    "Sunset Red" -> Brush.linearGradient(listOf(Color(0xFFFD5C25), Color(0xFFFF8E53)))
+                                    "Forest Green" -> Brush.linearGradient(listOf(Color(0xFF00C070), Color(0xFF5CFFA9)))
+                                    "Lavender" -> Brush.linearGradient(listOf(Color(0xFFAC56FA), Color(0xFFE2B2FF)))
+                                    else -> Brush.linearGradient(listOf(Color(0xFF0D99FF), Color(0xFF8AD4FF)))
+                                }
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(cardBg)
+                                            .padding(14.dp)
+                                    ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    // Glowing Avatar Circle in Preview
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Color.White.copy(alpha = 0.25f))
+                                                            .border(1.5.dp, Color.White, CircleShape),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(text = tempAvatar, fontSize = 24.sp)
+                                                    }
+
+                                                    Column {
+                                                        Text(
+                                                            text = if (tempName.isBlank()) "Academic Achiever" else tempName,
+                                                            style = MaterialTheme.typography.bodyLarge,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White
+                                                        )
+                                                        Text(
+                                                            text = tempMajor,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = Color.White.copy(alpha = 0.85f),
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Year Badge
+                                                Surface(
+                                                    color = Color.White.copy(alpha = 0.2f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Text(
+                                                        text = tempYear,
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            HorizontalDivider(color = Color.White.copy(alpha = 0.2f), thickness = 1.dp)
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.Bottom
+                                            ) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text(
+                                                        text = "ACADEMIC FOCUS GOAL",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontSize = 8.sp,
+                                                        color = Color.White.copy(alpha = 0.7f),
+                                                        fontWeight = FontWeight.Bold,
+                                                        letterSpacing = 1.sp
+                                                    )
+                                                    Text(
+                                                        text = tempGoal,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+
+                                                // Tech Barcode Element
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                                                        val barWidths = listOf(2, 4, 1, 3, 2, 4, 1, 2, 3)
+                                                        barWidths.forEach { w ->
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .width(w.dp)
+                                                                    .height(14.dp)
+                                                                    .background(Color.White.copy(alpha = 0.5f))
+                                                            )
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = "STUDENT ID PRO",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontSize = 7.sp,
+                                                        color = Color.White.copy(alpha = 0.6f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                // --- AVATAR EMOJI SELECTOR ---
+                                Text("Choose Profile Badge", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                val avatarOptions = listOf("🎓", "💻", "🔬", "🎨", "✍️", "🧠", "🧬", "🚀", "🏥", "💼", "📚", "🌟", "🔥", "🎯")
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    avatarOptions.forEach { emoji ->
+                                        val isSelected = tempAvatar == emoji
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                                .border(
+                                                    width = if (isSelected) 2.dp else 1.dp,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
+                                                    shape = CircleShape
+                                                )
+                                                .clickable { tempAvatar = emoji },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = emoji, fontSize = 20.sp)
+                                        }
+                                    }
+                                }
+
+                                // --- NAME FIELD ---
                                 Text("Student Username", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 OutlinedTextField(
                                     value = tempName,
@@ -1670,7 +1981,44 @@ fun HomeScreen(
                                     modifier = Modifier.fillMaxWidth().testTag("student_name_field")
                                 )
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                // --- MAJOR FIELD ---
+                                Text("Field of Study / Major", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                OutlinedTextField(
+                                    value = tempMajor,
+                                    onValueChange = { tempMajor = it },
+                                    placeholder = { Text("e.g. Computer Science") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                // --- YEAR OF STUDY ---
+                                Text("Year of Study", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                val yearsList = listOf("Freshman", "Sophomore", "Junior", "Senior", "Postgrad")
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    yearsList.forEach { yr ->
+                                        val isSel = tempYear == yr
+                                        FilterChip(
+                                            selected = isSel,
+                                            onClick = { tempYear = yr },
+                                            label = { Text(yr) }
+                                        )
+                                    }
+                                }
+
+                                // --- FOCUS GOAL ---
+                                Text("Academic Slogan & Focus Goal", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                OutlinedTextField(
+                                    value = tempGoal,
+                                    onValueChange = { tempGoal = it },
+                                    placeholder = { Text("e.g. Aiming for 4.0 GPA") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text("Select Theme Accent Color", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Text("Pick an aesthetic color preset to style the entire application.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 
@@ -1706,7 +2054,7 @@ fun HomeScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text("App Theme Appearance", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Row(
                                     modifier = Modifier
@@ -1737,79 +2085,106 @@ fun HomeScreen(
                                 Text("Customise Widget Elements", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Text("Toggle home dashboard modules on or off to maintain a clean, minimal, or rich study space.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    // Streak logs widget toggle
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            val newVal = !showStreakWidget.value
-                                            showStreakWidget.value = newVal
-                                            sharedPrefs.edit().putBoolean("show_streak", newVal).apply()
-                                        }.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Show Daily Streak Tracker Grid", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text("Displays current daily habits streak and attendance rates.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 280.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    WidgetToggleRow(
+                                        title = "Productivity Hero Card",
+                                        description = "Vibrant organic gradient banner showing overall study completion metrics.",
+                                        checked = showHeroWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showHeroWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_hero_widget", newVal).apply()
                                         }
-                                        Checkbox(
-                                            checked = showStreakWidget.value,
-                                            onCheckedChange = { newVal ->
-                                                showStreakWidget.value = newVal
-                                                sharedPrefs.edit().putBoolean("show_streak", newVal).apply()
-                                            }
-                                        )
-                                    }
+                                    )
 
                                     Spacer(modifier = Modifier.height(2.dp))
 
-                                    // Next class deep banner toggle
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            val newVal = !showClassBanner.value
-                                            showClassBanner.value = newVal
-                                            sharedPrefs.edit().putBoolean("show_class_banner", newVal).apply()
-                                        }.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Show Next Class Timetable Banner", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text("Highlight current / upcoming subjects, room numbers, and times.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    WidgetToggleRow(
+                                        title = "Quick Insights Stats Grid",
+                                        description = "Grid display of study hours, tasks count, focus scores, and current streak.",
+                                        checked = showStatsWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showStatsWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_stats_widget", newVal).apply()
                                         }
-                                        Checkbox(
-                                            checked = showClassBanner.value,
-                                            onCheckedChange = { newVal ->
-                                                showClassBanner.value = newVal
-                                                sharedPrefs.edit().putBoolean("show_class_banner", newVal).apply()
-                                            }
-                                        )
-                                    }
+                                    )
 
                                     Spacer(modifier = Modifier.height(2.dp))
 
-                                    // Daily Habits toggle
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            val newVal = !showHabitsWidget.value
+                                    WidgetToggleRow(
+                                        title = "Daily Habits Quick Checklist",
+                                        description = "Provides rapid tap completion for core active routine trackers.",
+                                        checked = showHabitsWidget.value,
+                                        onCheckedChange = { newVal ->
                                             showHabitsWidget.value = newVal
                                             sharedPrefs.edit().putBoolean("show_habits_widget", newVal).apply()
-                                        }.padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Show Daily Habits Quick Checklist", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                            Text("Provides rapid tap completion for core active trackers.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        Checkbox(
-                                            checked = showHabitsWidget.value,
-                                            onCheckedChange = { newVal ->
-                                                showHabitsWidget.value = newVal
-                                                sharedPrefs.edit().putBoolean("show_habits_widget", newVal).apply()
-                                            }
-                                        )
-                                    }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    WidgetToggleRow(
+                                        title = "Today's Schedule Timeline",
+                                        description = "Interactive visual timeline connecting registered lectures and classes.",
+                                        checked = showScheduleWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showScheduleWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_schedule_widget", newVal).apply()
+                                        }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    WidgetToggleRow(
+                                        title = "Focus Session Quick-Start",
+                                        description = "Provides a compact Pomodoro timer with direct session controls.",
+                                        checked = showTimerWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showTimerWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_timer_widget", newVal).apply()
+                                        }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    WidgetToggleRow(
+                                        title = "AI Schedule Coach Insights",
+                                        description = "Personalized tips and suggestions powered by academic AI insights.",
+                                        checked = showAiInsightsWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showAiInsightsWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_ai_insights_widget", newVal).apply()
+                                        }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    WidgetToggleRow(
+                                        title = "Today's Goals Checklist",
+                                        description = "Interactive checklist of tasks assigned or due today with progress bars.",
+                                        checked = showGoalsWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showGoalsWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_goals_widget", newVal).apply()
+                                        }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    WidgetToggleRow(
+                                        title = "Merit Achievements Milestones",
+                                        description = "Displays earned digital badges, scholar levels, and XP progress.",
+                                        checked = showAchievementsWidget.value,
+                                        onCheckedChange = { newVal ->
+                                            showAchievementsWidget.value = newVal
+                                            sharedPrefs.edit().putBoolean("show_achievements_widget", newVal).apply()
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -1872,6 +2247,66 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
                                 )
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 8.dp))
+
+                                Text(
+                                    text = "Robust Local Storage",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.align(Alignment.Start)
+                                )
+
+                                Text(
+                                    text = "Wipe and reset your tasks, stats, and habits to start completely from zero, or load demo statistics for quick visualization.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.Start)
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Seed Demo Data Button
+                                    Button(
+                                        onClick = {
+                                            viewModel.seedDemoData()
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("⚡", fontSize = 12.sp)
+                                            Text("Load Demo", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+
+                                    // Clear/Reset Data Button
+                                    Button(
+                                        onClick = {
+                                            viewModel.clearAllData()
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.1f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("🗑️", fontSize = 12.sp)
+                                            Text("Reset to Zero", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFFEF4444))
+                                        }
+                                    }
+                                }
                             }
                         }
                         3 -> { // Donation & Support QR Code
@@ -2007,6 +2442,10 @@ fun HomeScreen(
                         if (tempName.isNotBlank()) {
                             viewModel.updateStudentName(tempName)
                         }
+                        viewModel.updateStudentMajor(tempMajor)
+                        viewModel.updateStudentYear(tempYear)
+                        viewModel.updateAcademicGoal(tempGoal)
+                        viewModel.updateProfileAvatar(tempAvatar)
                         showProfileHubDialog = false
                     },
                     modifier = Modifier.testTag("save_name_button").fillMaxWidth()
@@ -2293,13 +2732,15 @@ fun HabitPremiumRow(
                         Text(text = habit.icon, fontSize = 18.sp)
                     }
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = habit.name,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Color(0xFF0F172A)
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -2312,36 +2753,32 @@ fun HabitPremiumRow(
                     }
                 }
 
-                // Custom segmented block progress bar
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val segments = 10
-                    val activeSegments = (habit.streak.toFloat() / 15f * 10).toInt().coerceIn(1, 10)
-                    for (i in 0 until segments) {
-                        Box(
-                            modifier = Modifier
-                                .width(8.dp)
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(
-                                    if (i < activeSegments) {
-                                        if (isCompleted) Color(0xFF10B981) else Color(0xFF4F7CFF)
-                                    } else {
-                                        if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-                                    }
-                                )
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${(activeSegments * 10)}%",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 9.sp
-                        )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Modern status indicator on the right of the habit row
+                if (isCompleted) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Completed",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else if (isFailed) {
+                    Icon(
+                        imageVector = Icons.Default.Cancel,
+                        contentDescription = "Skipped",
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .border(
+                                width = 2.dp,
+                                color = if (isDark) Color(0xFF475569) else Color(0xFFCBD5E1),
+                                shape = CircleShape
+                            )
                     )
                 }
             }
@@ -2439,3 +2876,45 @@ data class MilestoneBadge(
     val emoji: String,
     val unlocked: Boolean
 )
+
+@Composable
+fun WidgetToggleRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary
+            )
+        )
+    }
+}

@@ -70,11 +70,11 @@ class MainActivity : ComponentActivity() {
 
 enum class AppTab(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     HOME("Home", Icons.Default.Home),
-    ANALYTICS("Analytics", Icons.Default.BarChart),
+    ANALYTICS("Stats", Icons.Default.BarChart),
     TASKS("Tasks", Icons.Default.TaskAlt),
     TIMER("Timer", Icons.Default.Timer),
     HABITS("Habits", Icons.Default.CheckCircle),
-    SCHEDULE("Schedule", Icons.Default.CalendarToday)
+    SCHEDULE("Classes", Icons.Default.CalendarToday)
 }
 
 @Composable
@@ -236,42 +236,6 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-                        // Quick Stats row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "Streak 🔥",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${if (currentStreak > 0) currentStreak else 10} Days",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "Focus ⏱️",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${todayFocusMinutes} Min",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
                         // Quick Accent Switcher in Sidebar
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -382,8 +346,12 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 9.sp,
                                             fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                            color = if (isSelected) activeColor else inactiveColor
-                                        )
+                                            color = if (isSelected) activeColor else inactiveColor,
+                                            letterSpacing = (-0.4).sp
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
                                     )
                                 }
                             }

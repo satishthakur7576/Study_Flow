@@ -67,4 +67,20 @@ interface StudyDao {
 
     @Delete
     suspend fun deleteClass(classSchedule: ClassScheduleEntity)
+
+    // --- Database Wiping ---
+    @Query("DELETE FROM tasks")
+    suspend fun clearAllTasks()
+
+    @Query("DELETE FROM habits")
+    suspend fun clearAllHabits()
+
+    @Query("DELETE FROM habit_completions")
+    suspend fun clearAllHabitCompletions()
+
+    @Query("DELETE FROM focus_records")
+    suspend fun clearAllFocusRecords()
+
+    @Query("DELETE FROM classes")
+    suspend fun clearAllClasses()
 }

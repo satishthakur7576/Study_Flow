@@ -644,7 +644,9 @@ fun TaskAddEditDialog(
                             TextButton(
                                 onClick = {
                                     val nextMon = Calendar.getInstance()
-                                    nextMon.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                                    val dayOfWeek = nextMon.get(Calendar.DAY_OF_WEEK)
+                                    val daysToSubtract = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+                                    nextMon.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
                                     if (nextMon.timeInMillis <= System.currentTimeMillis()) {
                                         nextMon.add(Calendar.WEEK_OF_YEAR, 1)
                                     }

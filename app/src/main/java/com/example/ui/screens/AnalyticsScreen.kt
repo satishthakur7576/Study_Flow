@@ -260,96 +260,15 @@ fun AnalyticsScreen(
             }
         }
 
-
-
-
-
-
-
-
-
-
-
-        // 3. GITHUB CONTRIBUTIONS HEATMAP (STYLISH CARD CONTAINER)
+        // --- SECTION 2: DAYS LEFT IN CURRENT YEAR ---
         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGradient()),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Contribution Calendar 📅",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Daily activity logged over the past 365 days",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = { showContributionExplanationDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.HelpOutline,
-                                contentDescription = "Explain contributions",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    ContributionCalendarGrid(
-                        contributions = dailyContributions,
-                        todayDayOfWeek = todayDayOfWeek,
-                        isDark = isDarkThemeActive,
-                        onShowLearnMore = { showContributionExplanationDialog = true }
-                    )
-                }
-            }
-        }
-
-        // 4. YEARLY PRODUCTIVITY TREND CHART
-        item {
-            val monthlyTrend = remember(completions, focusRecords, tasks) {
-                val months = FloatArray(12) { 0f }
-                val currentYearStr = SimpleDateFormat("yyyy", Locale.US).format(Date())
-                
-                // Aggregate focus hours
-                focusRecords.forEach { record ->
-                    if (record.dateString.startsWith(currentYearStr)) {
-                        val m = try { record.dateString.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
-                        if (m in 0..11) {
-                            months[m] += record.durationMinutes.toFloat() / 60f
-                        }
-                    }
-                }
-                
-                // Add weighted completed tasks to give visual feedback even without pure focus records
-                tasks.filter { it.completed }.forEach { task ->
-                    if (task.dueDate.startsWith(currentYearStr)) {
-                        val m = try { task.dueDate.substring(5, 7).toInt() - 1 } catch(e: Exception) { -1 }
-                        if (m in 0..11) {
-                            months[m] += 0.5f // Each task counts as 30 mins worth of productive value
-                        }
-                    }
-                }
-                months.toList()
-            }
+            val calendar = Calendar.getInstance()
+            val currentYear = calendar.get(Calendar.YEAR)
+            val isLeapYear = (currentYear % 4 == 0 && currentYear % 100 != 0) || (currentYear % 400 == 0)
+            val totalDaysInYear = if (isLeapYear) 366 else 365
+            val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
+            val daysLeft = totalDaysInYear - dayOfYear
+            val percentPassed = (dayOfYear * 100) / totalDaysInYear
 
             Card(
                 modifier = Modifier
@@ -364,29 +283,173 @@ fun AnalyticsScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Yearly Productivity Trend 📈",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Cumulative productivity units mapped across months of this year.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Days Left in $currentYear 📅",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Every square represents one day of this year.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        // Small badge with percentage
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(dynamicColors.primaryColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "$percentPassed% Gone",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = dynamicColors.primaryColor
+                            )
+                        }
                     }
 
-                    YearlyProductivityTrendChart(
-                        monthlyValues = monthlyTrend,
-                        primaryColor = dynamicColors.primaryColor,
-                        gradientBrush = dynamicColors.gradientBrush
-                    )
+                    // Numeric stats row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$daysLeft",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = dynamicColors.primaryColor
+                            )
+                            Text(
+                                text = "Days Left",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .width(1.dp)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$dayOfYear",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Days Passed",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .width(1.dp)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$totalDaysInYear",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Total Days",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                    // The grid of squares
+                    val columns = 28
+                    val rows = (totalDaysInYear + columns - 1) / columns
+                    
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        for (r in 0 until rows) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for (c in 0 until columns) {
+                                    val dayIndex = r * columns + c + 1
+                                    if (dayIndex <= totalDaysInYear) {
+                                        val isPassed = dayIndex < dayOfYear
+                                        val isToday = dayIndex == dayOfYear
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.5.dp)
+                                                .clip(RoundedCornerShape(1.5.dp))
+                                                .background(
+                                                    if (isPassed) {
+                                                        dynamicColors.primaryColor
+                                                    } else if (isToday) {
+                                                        Color(0xFFFD5C25) // Vibrant highlight for today
+                                                    } else {
+                                                        if (isDarkThemeActive) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                                                    }
+                                                )
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isPassed) {
+                                                        Color.Transparent
+                                                    } else if (isToday) {
+                                                        Color(0xFFFD5C25)
+                                                    } else {
+                                                        if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                                    },
+                                                    shape = RoundedCornerShape(1.5.dp)
+                                                )
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.size(6.5.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -535,12 +598,12 @@ fun SimpleBarChart(
             val height = size.height
 
             val gridRows = 4
-            val rowHeight = height / gridRows
+            val chartHeight = height * 0.82f // Leave 18% at the top for labels / padding
             val safeMax = if (maxValue == 0f) 1f else maxValue
 
             // 1. Draw horizontal gridlines and vertical axis labels on the right edge
             for (i in 0..gridRows) {
-                val y = i * rowHeight
+                val y = (height - chartHeight) + i * (chartHeight / gridRows)
                 val gridVal = safeMax * (gridRows - i) / gridRows
                 val labelText = if (unit == "%") "${gridVal.toInt()}%" else "%.1f%s".format(gridVal, unit)
 
@@ -591,7 +654,7 @@ fun SimpleBarChart(
                 // Limit maximum drawing heights
                 val normalizedValue = if (currentAnimatedVal > safeMax) safeMax else currentAnimatedVal
                 val percentHeight = normalizedValue / safeMax
-                val barActualHeight = (height * percentHeight * 0.85f)
+                val barActualHeight = chartHeight * percentHeight
                 val barTop = height - barActualHeight
 
                 val isHighlighted = maxIndex != -1 && i == maxIndex && currentRawVal > 0f
@@ -661,8 +724,11 @@ fun ContributionCalendarGrid(
         val list = mutableListOf<List<CalendarDay>>()
         val cal = Calendar.getInstance()
         
-        // Find Sunday of current week
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        // Find Sunday of current week in a robust, locale-independent way
+        cal.firstDayOfWeek = Calendar.SUNDAY
+        val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+        val daysToSubtract = currentDayOfWeek - Calendar.SUNDAY
+        cal.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
         // Move back 52 weeks to show exactly 53 weeks (full year + current week)
         cal.add(Calendar.WEEK_OF_YEAR, -52)
         
@@ -1899,75 +1965,165 @@ fun YearlyProductivityTrendChart(
         if (max < 5f) 5f else max
     }
 
+    val transitionProgress = remember { Animatable(0f) }
+    LaunchedEffect(monthlyValues) {
+        transitionProgress.snapTo(0f)
+        transitionProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+        )
+    }
+
+    val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Simple Grid lines & Bars
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+                .height(130.dp)
+                .padding(top = 8.dp, bottom = 12.dp)
         ) {
-            monthlyValues.forEachIndexed { index, value ->
-                val fraction = (value / maxValue).coerceIn(0f, 1f)
-                val animatedHeightFraction by animateFloatAsState(
-                    targetValue = fraction,
-                    animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-                    label = "barHeight"
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val width = size.width
+                val height = size.height
+
+                val gridRows = 3
+                val chartHeight = height * 0.75f // Leave 25% at the top for spacing/labels
+                val safeMax = if (maxValue == 0f) 1f else maxValue
+
+                val leftMargin = 12.dp.toPx()
+                val rightMargin = 42.dp.toPx()
+                val chartWidth = width - leftMargin - rightMargin
+                val totalPoints = monthlyValues.size // 12 months
+
+                // 1. Draw horizontal gridlines and vertical axis labels on the right edge
+                for (i in 0..gridRows) {
+                    val y = (height - chartHeight) + i * (chartHeight / gridRows)
+                    val gridVal = safeMax * (gridRows - i) / gridRows
+                    val labelText = "%.1fh".format(gridVal)
+
+                    drawLine(
+                        color = onSurfaceColor.copy(alpha = 0.08f),
+                        start = Offset(x = leftMargin, y = y),
+                        end = Offset(x = width - rightMargin, y = y),
+                        strokeWidth = 1.dp.toPx()
+                    )
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        labelText,
+                        width - rightMargin + 8.dp.toPx(),
+                        y + 4.dp.toPx(),
+                        android.graphics.Paint().apply {
+                            color = onSurfaceColor.copy(alpha = 0.45f).toArgb()
+                            textSize = 9.sp.toPx()
+                            textAlign = android.graphics.Paint.Align.LEFT
+                        }
+                    )
+                }
+
+                if (totalPoints == 0) return@Canvas
+
+                val xSpacing = chartWidth / (totalPoints - 1)
+
+                // Calculate animated coordinates
+                val points = List(totalPoints) { i ->
+                    val x = leftMargin + i * xSpacing
+                    val rawVal = monthlyValues.getOrNull(i) ?: 0f
+                    val animatedVal = rawVal * transitionProgress.value
+                    val percentHeight = (animatedVal / safeMax).coerceIn(0f, 1f)
+                    val y = height - (chartHeight * percentHeight)
+                    Offset(x, y)
+                }
+
+                // 2. Draw Area Path (under the line)
+                val areaPath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(points[0].x, height)
+                    points.forEach { point ->
+                        lineTo(point.x, point.y)
+                    }
+                    lineTo(points.last().x, height)
+                    close()
+                }
+
+                drawPath(
+                    path = areaPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(primaryColor.copy(alpha = 0.25f), primaryColor.copy(alpha = 0.0f)),
+                        startY = height - chartHeight,
+                        endY = height
+                    )
                 )
 
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.Bottom,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
-                        // The active progress bar
-                        Box(
-                            modifier = Modifier
-                                .width(12.dp)
-                                .fillMaxHeight(fraction = animatedHeightFraction)
-                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                                .background(
-                                    if (fraction >= 0.8f) gradientBrush
-                                    else Brush.verticalGradient(
-                                        colors = listOf(primaryColor, primaryColor.copy(alpha = 0.4f))
-                                    )
-                                )
+                // 3. Draw Trend Line Path
+                val linePath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(points[0].x, points[0].y)
+                    for (i in 1 until totalPoints) {
+                        lineTo(points[i].x, points[i].y)
+                    }
+                }
+
+                drawPath(
+                    path = linePath,
+                    color = primaryColor,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 3.dp.toPx(),
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                )
+
+                // 4. Draw Glow Dots on active months
+                points.forEachIndexed { index, point ->
+                    val value = monthlyValues.getOrNull(index) ?: 0f
+                    if (value > 0f) {
+                        // Outer glow
+                        drawCircle(
+                            color = primaryColor.copy(alpha = 0.25f),
+                            radius = 6.dp.toPx(),
+                            center = point
+                        )
+                        // Inner solid
+                        drawCircle(
+                            color = primaryColor,
+                            radius = 4.dp.toPx(),
+                            center = point
+                        )
+                        // Core white
+                        drawCircle(
+                            color = Color.White,
+                            radius = 1.5.dp.toPx(),
+                            center = point
                         )
                     }
                 }
             }
         }
 
-        // X-Axis Labels
+        // X-Axis Labels (aligned perfectly to points)
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = 42.dp, start = 12.dp), // align with left and right margins of the chart
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             monthLabels.forEachIndexed { index, label ->
                 val hasValue = monthlyValues.getOrNull(index) ?: 0f > 0f
-                Text(
-                    text = label,
+                Box(
                     modifier = Modifier.weight(1f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (hasValue) FontWeight.Bold else FontWeight.Normal,
-                    color = if (hasValue) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (hasValue) FontWeight.Bold else FontWeight.Normal,
+                        color = if (hasValue) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
             }
         }
     }

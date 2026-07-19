@@ -30,6 +30,38 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         _studentName.value = name
     }
 
+    private val _studentMajor = MutableStateFlow(sharedPrefs.getString("student_major", "Computer Science") ?: "Computer Science")
+    val studentMajor: StateFlow<String> = _studentMajor.asStateFlow()
+
+    fun updateStudentMajor(major: String) {
+        sharedPrefs.edit().putString("student_major", major).apply()
+        _studentMajor.value = major
+    }
+
+    private val _studentYear = MutableStateFlow(sharedPrefs.getString("student_year", "Sophomore") ?: "Sophomore")
+    val studentYear: StateFlow<String> = _studentYear.asStateFlow()
+
+    fun updateStudentYear(year: String) {
+        sharedPrefs.edit().putString("student_year", year).apply()
+        _studentYear.value = year
+    }
+
+    private val _academicGoal = MutableStateFlow(sharedPrefs.getString("academic_goal", "Aiming for 4.0 GPA 🎓") ?: "Aiming for 4.0 GPA 🎓")
+    val academicGoal: StateFlow<String> = _academicGoal.asStateFlow()
+
+    fun updateAcademicGoal(goal: String) {
+        sharedPrefs.edit().putString("academic_goal", goal).apply()
+        _academicGoal.value = goal
+    }
+
+    private val _profileAvatar = MutableStateFlow(sharedPrefs.getString("profile_avatar", "🎓") ?: "🎓")
+    val profileAvatar: StateFlow<String> = _profileAvatar.asStateFlow()
+
+    fun updateProfileAvatar(avatar: String) {
+        sharedPrefs.edit().putString("profile_avatar", avatar).apply()
+        _profileAvatar.value = avatar
+    }
+
     // --- Customizable Accent Themes ---
     private val _themeAccent = MutableStateFlow(sharedPrefs.getString("theme_accent", "Ocean Blue") ?: "Ocean Blue")
     val themeAccent: StateFlow<String> = _themeAccent.asStateFlow()
@@ -102,13 +134,10 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
         }
 
         viewModelScope.launch {
-            // Wait briefly to make sure repository flow starts up, or read directly
-            val currentHabits = repository.allHabits.first()
-            if (currentHabits.isEmpty()) {
-                repository.insertHabit(HabitEntity(name = "Exercise", icon = "🏋️", category = "Physical", frequency = "Daily", streak = 4))
-                repository.insertHabit(HabitEntity(name = "Read Books", icon = "📚", category = "Intellectual", frequency = "Daily", streak = 6))
-                repository.insertHabit(HabitEntity(name = "Wake up early", icon = "🌅", category = "Routine", frequency = "Daily", streak = 5))
-                repository.insertHabit(HabitEntity(name = "Learn Coding", icon = "💻", category = "Work", frequency = "Daily", streak = 10))
+            // Out of the box, we start with a clean zero state.
+            val isSeeded = sharedPrefs.getBoolean("database_seeded", false)
+            if (!isSeeded) {
+                sharedPrefs.edit().putBoolean("database_seeded", true).apply()
             }
         }
     }
@@ -291,6 +320,65 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
     fun deleteClass(classItem: ClassScheduleEntity) {
         viewModelScope.launch {
             repository.deleteClass(classItem)
+        }
+    }
+
+    fun seedDemoData() {
+        viewModelScope.launch {
+            // Seed habits if they don't exist
+            repository.insertHabit(HabitEntity(name = "Exercise", icon = "🏋️", category = "Physical", frequency = "Daily", streak = 4))
+            repository.insertHabit(HabitEntity(name = "Read Books", icon = "📚", category = "Intellectual", frequency = "Daily", streak = 6))
+            repository.insertHabit(HabitEntity(name = "Wake up early", icon = "🌅", category = "Routine", frequency = "Daily", streak = 5))
+            repository.insertHabit(HabitEntity(name = "Learn Coding", icon = "💻", category = "Work", frequency = "Daily", streak = 10))
+
+            // Seed Focus Records if empty to make Yearly Productivity Trend Chart work beautifully
+            val cal = Calendar.getInstance()
+            val year = cal.get(Calendar.YEAR)
+            val currentMonth = cal.get(Calendar.MONTH) // 0-indexed, up to 11
+            for (m in 0..currentMonth) {
+                val monthStr = String.format("%02d", m + 1)
+                val baseMins = 150 + m * 30 + (if (m % 2 == 0) 60 else 0)
+                repository.logFocusMinutes("$year-$monthStr-05", baseMins)
+                repository.logFocusMinutes("$year-$monthStr-12", baseMins + 50)
+                repository.logFocusMinutes("$year-$monthStr-20", baseMins - 40)
+                repository.logFocusMinutes("$year-$monthStr-28", baseMins + 30)
+            }
+
+            // Seed some Today and historical tasks to give excellent default user feedback and make trend look full
+            val monthStr = String.format("%02d", currentMonth + 1)
+            
+            // Active and completed tasks for today/this month
+            repository.insertTask(TaskEntity(title = "Read Chapter 4 Architecture", subject = "Computer Science", dueDate = "$year-$monthStr-17", priority = "HIGH", completed = false))
+            repository.insertTask(TaskEntity(title = "Revise Database Queries", subject = "Database Systems", dueDate = "$year-$monthStr-17", priority = "MEDIUM", completed = true))
+            repository.insertTask(TaskEntity(title = "Finish Chemistry Lab Report", subject = "Chemistry", dueDate = "$year-$monthStr-17", priority = "LOW", completed = false))
+
+            // Historical completed tasks across previous months to enrich the trend chart
+            for (m in 0..currentMonth) {
+                val mStr = String.format("%02d", m + 1)
+                repository.insertTask(TaskEntity(title = "Completed Project Prep", subject = "General Academics", dueDate = "$year-$mStr-10", priority = "LOW", completed = true))
+                repository.insertTask(TaskEntity(title = "Assigned Homework Sheet", subject = "General Academics", dueDate = "$year-$mStr-22", priority = "MEDIUM", completed = true))
+            }
+            
+            // Re-sync liveness counters
+            recalculateHabitStreaks()
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch {
+            repository.clearAllData()
+            // Reset other SharedPreferences stats
+            sharedPrefs.edit()
+                .putInt("weekly_focus_goal", 10)
+                .putInt("focus_duration_minutes", 25)
+                .putInt("break_duration_minutes", 5)
+                .apply()
+            _weeklyFocusGoalHours.value = 10
+            _focusDurationMinutes.value = 25
+            _breakDurationMinutes.value = 5
+            _timerSecondsLeft.value = 25 * 60
+            _timerIsRunning.value = false
+            timerJob?.cancel()
         }
     }
 
@@ -618,8 +706,11 @@ class StudyViewModel(private val repository: StudyRepository, private val contex
     fun getDatesOfCurrentWeekString(): List<String> {
         val dates = mutableListOf<String>()
         val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        // Find Monday of current week in a robust, locale-independent way
+        val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+        val daysToSubtract = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+        cal.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
+        
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         for (i in 0 until 7) {
             dates.add(sdf.format(cal.time))

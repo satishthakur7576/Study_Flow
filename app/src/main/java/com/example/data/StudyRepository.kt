@@ -84,4 +84,12 @@ class StudyRepository(private val studyDao: StudyDao) {
     suspend fun deleteClass(classSchedule: ClassScheduleEntity) {
         studyDao.deleteClass(classSchedule)
     }
+
+    suspend fun clearAllData() {
+        studyDao.clearAllTasks()
+        studyDao.clearAllHabits()
+        studyDao.clearAllHabitCompletions()
+        studyDao.clearAllFocusRecords()
+        studyDao.clearAllClasses()
+    }
 }
