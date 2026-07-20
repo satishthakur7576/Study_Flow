@@ -112,6 +112,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
 
     // Student & Study data states for Sidebar / Overlays
     val studentName by viewModel.studentName.collectAsState()
+    val studentYear by viewModel.studentYear.collectAsState()
     val isDarkTheme by viewModel.isDarkTheme.collectAsState()
     val activeTheme by viewModel.themeAccent.collectAsState()
     val tasks by viewModel.tasks.collectAsState()
@@ -179,7 +180,7 @@ fun MainAppLayout(viewModel: StudyViewModel) {
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Academic Architect",
+                                    text = studentYear,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold

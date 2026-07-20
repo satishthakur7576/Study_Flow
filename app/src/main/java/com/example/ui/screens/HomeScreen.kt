@@ -193,11 +193,7 @@ fun HomeScreen(
     val focusRecords by viewModel.focusRecords.collectAsStateWithLifecycle()
     val weeklyFocusGoalHours by viewModel.weeklyFocusGoalHours.collectAsStateWithLifecycle()
     val dailyFocusGoalHours by viewModel.dailyFocusGoalHours.collectAsStateWithLifecycle()
-    val googleUserEmail by viewModel.googleUserEmail.collectAsStateWithLifecycle()
-    val googleUserName by viewModel.googleUserName.collectAsStateWithLifecycle()
-    val googleUserPhoto by viewModel.googleUserPhoto.collectAsStateWithLifecycle()
-    val isGoogleSignedIn by viewModel.isGoogleSignedIn.collectAsStateWithLifecycle()
-    val lastCloudSyncTime by viewModel.lastCloudSyncTime.collectAsStateWithLifecycle()
+
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("study_flow_prefs", android.content.Context.MODE_PRIVATE) }
@@ -466,94 +462,45 @@ fun HomeScreen(
                             }
                         }
 
-                        // Interactive icons matching Linear / Arc design
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Optimized interactive custom avatar with badge indicator
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable { showProfileHubDialog = true },
+                            contentAlignment = Alignment.Center
                         ) {
-                            // Search button triggers manual logging / dialog
-                            IconButton(
-                                onClick = { showManualLogsDialog = true },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
-                                    .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Search,
-                                    contentDescription = "Quick Search Actions",
-                                    tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            // Notification Icon with glowing indicator
-                            Box {
-                                IconButton(
-                                    onClick = { /* visual action handled globally */ },
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White)
-                                        .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Notifications,
-                                        contentDescription = "Notifications",
-                                        tint = if (isDarkThemeActive) Color.White else Color(0xFF0F172A),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                // Soft green notification bubble
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF10B981))
-                                        .align(Alignment.TopEnd)
-                                        .offset(x = (-1).dp, y = 1.dp)
-                                )
-                            }
-
-                            // Overlapping custom avatar with badge indicator
+                            // Initials Circle
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clickable { showProfileHubDialog = true }
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .border(1.5.dp, if (isDarkThemeActive) Color(0xFF4F7CFF) else Color(0xFF7C3AED), CircleShape)
+                                    .background(Brush.linearGradient(listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED)))),
+                                contentAlignment = Alignment.Center
                             ) {
-                                // Initials Circle
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Brush.linearGradient(listOf(Color(0xFF4F7CFF), Color(0xFF7C3AED)))),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = initials,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontSize = 13.sp
-                                        )
+                                Text(
+                                    text = initials,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 13.sp
                                     )
-                                }
-                                // Small badge emoji overlapping
-                                Box(
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 2.dp, y = 2.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isDarkThemeActive) Color(0xFF1E293B) else Color.White),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = profileAvatar,
-                                        fontSize = 11.sp
-                                    )
-                                }
+                                )
+                            }
+                            // Small badge emoji overlapping
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .align(Alignment.BottomEnd)
+                                    .clip(CircleShape)
+                                    .background(if (isDarkThemeActive) Color(0xFF0F172A) else Color(0xFFFFFFFF))
+                                    .border(1.dp, if (isDarkThemeActive) Color(0xFF334155) else Color(0xFFE2E8F0), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = profileAvatar,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
@@ -1561,8 +1508,6 @@ fun HomeScreen(
         }
     }
 
-    var showGoogleSignInDialog by remember { mutableStateOf(false) }
-
     // --- Control Hub & Settings Panel ---
     if (showProfileHubDialog) {
         var hubTab by remember { mutableStateOf(0) } // 0=Account & Accent, 1=Widgets, 2=Sync Config, 3=Donate
@@ -1604,7 +1549,7 @@ fun HomeScreen(
                             .padding(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        val sheets = listOf("Profile", "Widgets", "Cloud", "Donate")
+                        val sheets = listOf("Profile", "Widgets", "Storage", "Donate")
                         sheets.forEachIndexed { idx, title ->
                             val isSelected = hubTab == idx
                             Box(
@@ -1813,7 +1758,10 @@ fun HomeScreen(
 
                                 // --- YEAR OF STUDY ---
                                 Text("Year of Study", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                val yearsList = listOf("Freshman", "Sophomore", "Junior", "Senior", "Postgrad")
+                                val yearsList = listOf(
+                                    "Class 9", "Class 10", "Class 11", "Class 12",
+                                    "Undergraduate", "Postgrad", "Freshman", "Sophomore", "Junior", "Senior"
+                                )
                                 Row(
                                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2037,212 +1985,12 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        2 -> { // Secure cloud synchronization
+                        2 -> { // Storage & Demo Data management
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                             ) {
-                                if (isGoogleSignedIn) {
-                                    // Google Account details card
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primary),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = (googleUserName ?: googleUserEmail ?: "U").take(1).uppercase(),
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                            )
-                                        }
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = googleUserName ?: "Academic Achiever",
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Text(
-                                                text = googleUserEmail ?: "",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-
-                                        IconButton(
-                                            onClick = { viewModel.signOutFromGoogle() },
-                                            modifier = Modifier.size(36.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ExitToApp,
-                                                contentDescription = "Sign Out",
-                                                tint = Color(0xFFEF4444)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(2.dp))
-
-                                    Icon(
-                                        imageVector = Icons.Default.CloudDone,
-                                        contentDescription = "Cloud Icon",
-                                        tint = Color(0xFF00C070),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-
-                                    Text(
-                                        text = "Cloud Backup Enabled",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-
-                                    Text(
-                                        text = "Your daily focus goals, completed habits, tasks, and achievements are linked with your Google profile.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    val localScope = rememberCoroutineScope()
-                                    Button(
-                                        onClick = {
-                                            if (!isSyncing) {
-                                                isSyncing = true
-                                                localScope.launch {
-                                                    kotlinx.coroutines.delay(1200)
-                                                    isSyncing = false
-                                                    viewModel.updateLastCloudSyncTime()
-                                                    syncCompleted = true
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth().height(42.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C070)),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        if (isSyncing) {
-                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                                        } else {
-                                            Text("Backup To Cloud Now ✓", fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-                                    }
-
-                                    val lastSyncText = remember(lastCloudSyncTime, syncCompleted) {
-                                        if (lastCloudSyncTime == 0L) {
-                                            "Never backed up to this account yet."
-                                        } else {
-                                            val diff = System.currentTimeMillis() - lastCloudSyncTime
-                                            if (diff < 60000) "Just backed up now"
-                                            else "${diff / 60000} mins ago"
-                                        }
-                                    }
-
-                                    Text(
-                                        text = "Server Endpoint Sync: ACTIVE\nLast database backup: $lastSyncText",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
-                                } else {
-                                    // Google Sign-In promo card
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                        shape = RoundedCornerShape(14.dp),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(14.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CloudQueue,
-                                                contentDescription = "Cloud Icon",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(44.dp)
-                                            )
-
-                                            Text(
-                                                text = "Save Progress to Cloud",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-
-                                            Text(
-                                                text = "Sign in with your Gmail/Google account to back up and preserve your academic stats, schedules, and badges. Easily sync between your devices so your data is never lost.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                textAlign = TextAlign.Center
-                                            )
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-
-                                            // Styled Google Sign In Button
-                                            Button(
-                                                onClick = {
-                                                    try {
-                                                        val intent = googleSignInClient.signInIntent
-                                                        signInLauncher.launch(intent)
-                                                    } catch (e: Exception) {
-                                                        showGoogleSignInDialog = true
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth().height(44.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
-                                                shape = RoundedCornerShape(10.dp)
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    // Google logo symbol
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(20.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Color.White),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text(
-                                                            text = "G",
-                                                            color = Color(0xFF4285F4),
-                                                            fontWeight = FontWeight.Black,
-                                                            fontSize = 12.sp
-                                                        )
-                                                    }
-                                                    Text(
-                                                        text = "Sign in with Google",
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White,
-                                                        style = MaterialTheme.typography.bodyMedium
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
-
                                 Text(
                                     text = "Robust Local Storage",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -2312,6 +2060,41 @@ fun HomeScreen(
                                                 softWrap = false
                                             )
                                         }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text(
+                                    text = "Manual Entry",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.align(Alignment.Start)
+                                )
+
+                                Button(
+                                    onClick = {
+                                        showProfileHubDialog = false
+                                        showManualLogsDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("⏱️", fontSize = 14.sp)
+                                        Text(
+                                            text = "Log Study Minutes Manually",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
                                     }
                                 }
                             }
