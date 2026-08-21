@@ -777,7 +777,7 @@ fun HomeScreen(
                         )
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            habits.take(5).forEachIndexed { index, habit ->
+                            habits.forEachIndexed { index, habit ->
                                 val completion = completions.find { it.habitId == habit.id && it.dateString == todayStr }
                                 val isCompleted = completion != null && (completion.status == "COMPLETED" || completion.status == null)
                                 val isFailed = completion != null && completion.status == "FAILED"
